@@ -1,21 +1,35 @@
+import { placeholderProfiles } from './data/malwareProfiles/placeholders'
+import { startupTopology } from './data/topologies/startup'
+import { assetTypeLabel, type NetworkEdge } from './domain/topology'
 import './App.css'
 
-const topologyZones = [
-  { label: 'Ingress', count: 2, status: 'clean' },
-  { label: 'Endpoints', count: 12, status: 'ready' },
-  { label: 'Servers', count: 5, status: 'clean' },
-  { label: 'Identity', count: 2, status: 'guarded' },
-  { label: 'Data Stores', count: 3, status: 'clean' },
-]
+const topologyOptions = [startupTopology]
+const activeTopology = startupTopology
 
-const mapNodes = [
-  { id: 'MAIL', label: 'Mail', type: 'Mail Server', className: 'node-mail' },
-  { id: 'HR', label: 'HR-04', type: 'Endpoint', className: 'node-hr' },
-  { id: 'ENG', label: 'ENG-12', type: 'Endpoint', className: 'node-eng' },
-  { id: 'APP', label: 'App', type: 'Server', className: 'node-app' },
-  { id: 'DC', label: 'DC-01', type: 'Domain Controller', className: 'node-dc' },
-  { id: 'DB', label: 'DB', type: 'Database', className: 'node-db' },
-]
+function segmentAssetCount(segmentId: string) {
+  return activeTopology.nodes.filter((node) => node.segment === segmentId).length
+}
+
+function edgeStyle(edge: NetworkEdge) {
+  const source = activeTopology.nodes.find((node) => node.id === edge.source)
+  const target = activeTopology.nodes.find((node) => node.id === edge.target)
+
+  if (!source || !target) {
+    return {}
+  }
+
+  const deltaX = target.position.x - source.position.x
+  const deltaY = target.position.y - source.position.y
+  const length = Math.hypot(deltaX, deltaY)
+  const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI)
+
+  return {
+    left: `${source.position.x}%`,
+    top: `${source.position.y}%`,
+    width: `${length}%`,
+    transform: `rotate(${angle}deg)`,
+  }
+}
 
 function App() {
   return (
@@ -30,18 +44,18 @@ function App() {
           <label>
             Topology
             <select aria-label="Topology preset">
-              <option>Startup</option>
-              <option>Mid-size Company</option>
-              <option>Enterprise</option>
-              <option>Hospital</option>
+              {topologyOptions.map((topology) => (
+                <option value={topology.id}>{topology.label}</option>
+              ))}
             </select>
           </label>
 
           <label>
             Profile
             <select aria-label="Malware behavior profile">
-              <option>Phishing Infostealer</option>
-              <option>Network Worm</option>
+              {placeholderProfiles.map((profile) => (
+                <option value={profile.id}>{profile.label}</option>
+              ))}
             </select>
           </label>
 
@@ -56,15 +70,15 @@ function App() {
         <aside class="left-rail" aria-label="Topology zones">
           <div class="panel-heading">
             <p class="eyebrow">Topology</p>
-            <h2>Startup Network</h2>
+            <h2>{activeTopology.label}</h2>
           </div>
 
           <nav class="zone-list" aria-label="Network segments">
-            {topologyZones.map((zone) => (
+            {activeTopology.segments.map((zone) => (
               <button type="button" class="zone-card">
                 <span>{zone.label}</span>
                 <small>
-                  {zone.count} assets / {zone.status}
+                  {segmentAssetCount(zone.id)} assets / {zone.status}
                 </small>
               </button>
             ))}
@@ -84,16 +98,19 @@ function App() {
           <div class="iso-grid" aria-hidden="true"></div>
 
           <div class="network-map">
-            <div class="network-path path-mail-hr"></div>
-            <div class="network-path path-hr-app"></div>
-            <div class="network-path path-app-dc"></div>
-            <div class="network-path path-app-db"></div>
+            {activeTopology.edges.map((edge) => (
+              <div class="network-path" style={edgeStyle(edge)}></div>
+            ))}
 
-            {mapNodes.map((node) => (
-              <button type="button" class={`asset-node ${node.className}`}>
-                <strong>{node.id}</strong>
-                <span>{node.label}</span>
-                <small>{node.type}</small>
+            {activeTopology.nodes.map((node) => (
+              <button
+                type="button"
+                class={`asset-node asset-${node.type}`}
+                style={{ left: `${node.position.x}%`, top: `${node.position.y}%` }}
+              >
+                <strong>{node.label}</strong>
+                <span>{node.hostname.split('.')[0]}</span>
+                <small>{assetTypeLabel(node.type)}</small>
               </button>
             ))}
           </div>

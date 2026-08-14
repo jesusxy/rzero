@@ -213,6 +213,7 @@ button.secondary {
 
 .asset-node {
   position: absolute;
+  z-index: 2;
   width: 112px;
   min-height: 82px;
   display: grid;
@@ -225,6 +226,7 @@ button.secondary {
       6px 6px,
     var(--node);
   box-shadow: 8px 8px 0 var(--node-shadow);
+  transform: translate(-50%, -50%);
 }
 
 .asset-node strong {
@@ -237,76 +239,23 @@ button.secondary {
   font-size: 13px;
 }
 
-.node-mail {
-  left: 18%;
-  top: 31%;
-}
-
-.node-hr {
-  left: 34%;
-  top: 45%;
+.asset-endpoint {
   width: 96px;
   min-height: 70px;
 }
 
-.node-eng {
-  left: 28%;
-  top: 61%;
-  width: 96px;
-  min-height: 70px;
-}
-
-.node-app {
-  left: 49%;
-  top: 37%;
-}
-
-.node-dc {
-  left: 64%;
-  top: 48%;
+.asset-domain-controller {
   width: 122px;
   min-height: 98px;
 }
 
-.node-db {
-  left: 57%;
-  top: 68%;
-}
-
 .network-path {
   position: absolute;
+  z-index: 1;
   height: 2px;
   background: var(--ink-strong);
   opacity: 0.55;
   transform-origin: left center;
-}
-
-.path-mail-hr {
-  left: 27%;
-  top: 41%;
-  width: 160px;
-  transform: rotate(22deg);
-}
-
-.path-hr-app {
-  left: 41%;
-  top: 53%;
-  width: 170px;
-  transform: rotate(-12deg);
-}
-
-.path-app-dc {
-  left: 57%;
-  top: 48%;
-  width: 145px;
-  transform: rotate(22deg);
-}
-
-.path-app-db {
-  left: 58%;
-  top: 55%;
-  width: 125px;
-  transform: rotate(73deg);
 }
 
 .map-hints {

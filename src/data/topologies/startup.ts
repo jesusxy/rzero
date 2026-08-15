@@ -24,7 +24,7 @@ export const startupTopology: Topology = {
       privilegeTier: "admin",
       edr: true,
       infectionState: "clean",
-      position: { x: 18, y: 31 },
+      position: { x: 6, y: 6 },
     },
     {
       id: "hr-04",
@@ -37,7 +37,8 @@ export const startupTopology: Topology = {
       privilegeTier: "standard-user",
       edr: true,
       infectionState: "clean",
-      position: { x: 34, y: 45 },
+      position: { x: 6, y: 20 },
+      instanceCount: 6,
     },
     {
       id: "eng-12",
@@ -50,7 +51,8 @@ export const startupTopology: Topology = {
       privilegeTier: "power-user",
       edr: true,
       infectionState: "clean",
-      position: { x: 28, y: 61 },
+      position: { x: 16, y: 6 },
+      instanceCount: 40,
     },
     {
       id: "app-01",
@@ -63,7 +65,7 @@ export const startupTopology: Topology = {
       privilegeTier: "admin",
       edr: true,
       infectionState: "clean",
-      position: { x: 49, y: 37 },
+      position: { x: 18, y: 18 },
     },
     {
       id: "dc-01",
@@ -76,7 +78,7 @@ export const startupTopology: Topology = {
       privilegeTier: "domain-admin",
       edr: true,
       infectionState: "clean",
-      position: { x: 64, y: 48 },
+      position: { x: 18, y: 27 },
     },
     {
       id: "db-01",
@@ -89,7 +91,7 @@ export const startupTopology: Topology = {
       privilegeTier: "admin",
       edr: false,
       infectionState: "clean",
-      position: { x: 57, y: 68 },
+      position: { x: 27, y: 10 },
     },
   ],
   edges: [
@@ -99,6 +101,21 @@ export const startupTopology: Topology = {
       target: "hr-04",
       label: "Mail delivery",
       allowedProtocols: ["SMTP", "HTTPS"],
+      route: [
+        { x: 4, y: 4 },
+        { x: 4, y: 10 },
+      ],
+    },
+    {
+      id: "mail-eng",
+      source: "mail-01",
+      target: "eng-12",
+      label: "Mail delivery",
+      allowedProtocols: ["SMTP", "HTTPS"],
+      route: [
+        { x: 4, y: 4 },
+        { x: 10, y: 4 },
+      ],
     },
     {
       id: "hr-app",
@@ -106,6 +123,23 @@ export const startupTopology: Topology = {
       target: "app-01",
       label: "App access",
       allowedProtocols: ["HTTPS"],
+      route: [
+        { x: 4, y: 10 },
+        { x: 11, y: 10 },
+        { x: 11, y: 11 },
+      ],
+    },
+    {
+      id: "eng-app",
+      source: "eng-12",
+      target: "app-01",
+      label: "App access",
+      allowedProtocols: ["HTTPS", "SSH"],
+      route: [
+        { x: 10, y: 4 },
+        { x: 10, y: 11 },
+        { x: 11, y: 11 },
+      ],
     },
     {
       id: "app-dc",
@@ -113,6 +147,10 @@ export const startupTopology: Topology = {
       target: "dc-01",
       label: "Identity lookup",
       allowedProtocols: ["LDAP", "Kerberos"],
+      route: [
+        { x: 11, y: 11 },
+        { x: 11, y: 17 },
+      ],
     },
     {
       id: "app-db",
@@ -120,6 +158,10 @@ export const startupTopology: Topology = {
       target: "db-01",
       label: "Database access",
       allowedProtocols: ["PostgreSQL"],
+      route: [
+        { x: 11, y: 11 },
+        { x: 17, y: 11 },
+      ],
     },
   ],
 };

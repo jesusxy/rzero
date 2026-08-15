@@ -166,10 +166,7 @@ button.secondary {
   position: relative;
   min-height: 0;
   overflow: hidden;
-  background:
-    linear-gradient(135deg, rgba(31, 29, 23, 0.04) 25%, transparent 25%) 0 0 /
-      28px 28px,
-    var(--paper);
+  background: var(--paper);
 }
 
 .map-toolbar {
@@ -187,75 +184,92 @@ button.secondary {
   padding: 0;
 }
 
-.iso-grid {
-  position: absolute;
-  left: 50%;
-  top: 52%;
-  width: min(1040px, 86%);
-  aspect-ratio: 1.65;
-  transform: translate(-50%, -50%) rotateX(58deg) rotateZ(45deg);
-  transform-origin: center;
-  border: 1px solid rgba(31, 29, 23, 0.16);
-  background-image:
-    linear-gradient(rgba(31, 29, 23, 0.11) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(31, 29, 23, 0.11) 1px, transparent 1px);
-  background-size: 46px 46px;
+.iso-grid-line {
+  fill: none;
+  stroke: rgba(24, 22, 17, 0.32);
+  stroke-width: 0.55;
+  vector-effect: non-scaling-stroke;
 }
 
 .network-map {
   position: absolute;
   left: 50%;
-  top: 52%;
-  width: min(1040px, 86%);
-  aspect-ratio: 1.65;
+  top: 49%;
+  width: min(920px, 92%);
+  aspect-ratio: 1.48;
   transform: translate(-50%, -50%);
 }
 
-.asset-node {
-  position: absolute;
-  z-index: 2;
-  width: 112px;
-  min-height: 82px;
-  display: grid;
-  place-items: center;
-  gap: 2px;
-  padding: 10px;
-  text-transform: none;
-  background:
-    linear-gradient(90deg, rgba(31, 29, 23, 0.08) 1px, transparent 1px) 0 0 /
-      6px 6px,
-    var(--node);
-  box-shadow: 8px 8px 0 var(--node-shadow);
-  transform: translate(-50%, -50%);
+.network-scene {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
 }
 
-.asset-node strong {
-  color: var(--ink-strong);
+.network-edge {
+  fill: none;
+  stroke: var(--ink-strong);
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  stroke-width: 1.6;
+  opacity: 0.9;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.block-hatch-bg {
+  fill: var(--node-shadow);
+}
+
+.block-hatch-line {
+  stroke: rgba(24, 22, 17, 0.28);
+  stroke-width: 0.35;
+}
+
+.asset-block {
+  cursor: pointer;
+  outline: none;
+}
+
+.asset-face {
+  stroke: var(--ink-strong);
+  stroke-width: 0.58;
+  vector-effect: non-scaling-stroke;
+}
+
+.asset-face-top {
+  fill: var(--node);
+}
+
+.asset-face-left {
+  fill: url(#block-hatch);
+}
+
+.asset-face-right {
+  fill: var(--node-shadow);
+}
+
+.asset-block:hover .asset-face,
+.asset-block:focus .asset-face {
+  stroke-width: 1.2;
+}
+
+.asset-block-label,
+.asset-block-hostname {
+  fill: var(--ink-strong);
   font-family: var(--mono);
-  font-size: 17px;
+  text-anchor: middle;
+  pointer-events: none;
 }
 
-.asset-node span {
-  font-size: 13px;
+.asset-block-label {
+  font-size: 1.8px;
+  font-weight: 700;
 }
 
-.asset-endpoint {
-  width: 96px;
-  min-height: 70px;
-}
-
-.asset-domain-controller {
-  width: 122px;
-  min-height: 98px;
-}
-
-.network-path {
-  position: absolute;
-  z-index: 1;
-  height: 2px;
-  background: var(--ink-strong);
-  opacity: 0.55;
-  transform-origin: left center;
+.asset-block-hostname {
+  font-size: 1.2px;
 }
 
 .map-hints {

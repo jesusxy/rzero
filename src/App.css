@@ -264,8 +264,9 @@ button.secondary {
 }
 
 .asset-block-label {
-  font-size: 1.8px;
-  font-weight: 700;
+  font-size: 1.2px;
+  font-weight: 400;
+  text-transform: none;
 }
 
 .asset-block-hostname {

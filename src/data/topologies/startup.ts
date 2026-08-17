@@ -15,7 +15,7 @@ export const startupTopology: Topology = {
   nodes: [
     {
       id: "mail-01",
-      label: "MAIL",
+      label: "mail",
       hostname: "mail.startup.local",
       type: "mail-server",
       os: "Ubuntu Server 24.04 LTS",
@@ -28,7 +28,7 @@ export const startupTopology: Topology = {
     },
     {
       id: "hr-04",
-      label: "HR",
+      label: "hr",
       hostname: "hr-04.startup.local",
       type: "endpoint",
       os: "Windows 11 Pro",
@@ -42,7 +42,7 @@ export const startupTopology: Topology = {
     },
     {
       id: "eng-12",
-      label: "ENG",
+      label: "eng",
       hostname: "eng-12.startup.local",
       type: "endpoint",
       os: "macOS 15",
@@ -56,7 +56,7 @@ export const startupTopology: Topology = {
     },
     {
       id: "app-01",
-      label: "APP",
+      label: "app",
       hostname: "app-01.startup.local",
       type: "server",
       os: "Ubuntu Server 24.04 LTS",
@@ -69,7 +69,7 @@ export const startupTopology: Topology = {
     },
     {
       id: "dc-01",
-      label: "DC",
+      label: "dc",
       hostname: "dc-01.startup.local",
       type: "domain-controller",
       os: "Windows Server 2022",
@@ -82,7 +82,7 @@ export const startupTopology: Topology = {
     },
     {
       id: "db-01",
-      label: "DB",
+      label: "db",
       hostname: "db-01.startup.local",
       type: "database",
       os: "PostgreSQL on Ubuntu Server 24.04 LTS",

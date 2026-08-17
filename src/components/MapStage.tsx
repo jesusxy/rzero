@@ -226,9 +226,6 @@ export function MapStage(props: MapStageProps) {
                 <text class="asset-block-label" x={block.center.x} y={block.center.y + 0.8}>
                   {node.label}
                 </text>
-                <text class="asset-block-hostname" x={block.center.x} y={block.groundBottom.y + 1.6}>
-                  {node.hostname.split('.')[0]}
-                </text>
               </g>
               )
             }}</For>

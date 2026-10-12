@@ -24,8 +24,9 @@ bun run rzero run      fixtures/scenarios/001-five-node-baseline.json   # run th
 ## Layout
 
 - `src/core/` — UI-independent domain core: native types, JSON Schemas,
-  JSON/restricted-YAML import, validation, scenario compilation and the
-  deterministic propagation engine. Import it only through `src/core/index.ts`.
+  JSON/restricted-YAML import, validation, scenario compilation, the
+  deterministic propagation engine, and result analysis, one-change
+  comparison and the replay reducer. Import it only through `src/core/index.ts`.
 - `src/components/`, `src/App.tsx` — Solid UI shell (prototype).
 - `src/domain/`, `src/data/` — prototype UI mock types and data; illustrative
   only, see `docs/core-integration.md`.

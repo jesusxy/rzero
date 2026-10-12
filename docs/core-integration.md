@@ -1,6 +1,6 @@
 # Core integration notes
 
-Status: milestones 1 (native contracts) and 2 (deterministic engine) are implemented. Revision 0.2, 12 October 2026.
+Status: milestones 1 (native contracts), 2 (deterministic engine) and 3 (analysis, comparison, replay) are implemented. Revision 0.3, 12 October 2026.
 
 ## The integration boundary
 
@@ -15,6 +15,11 @@ The frontend, the CLI (`scripts/rzero.ts`), a future simulation worker and the t
 | `NATIVE_SCHEMAS` | The published JSON Schemas, e.g. for editor integration |
 | `runScenario(compiled, { maxEvents?, shouldCancel?, engineVersion? })` | Run the engine → deep-frozen `RunResult` |
 | `evaluateCapability`, `outcomeOf` | The mechanism evaluators, exposed for the inspector |
+| `analyzeRun(compiled, run)` | Summarize a run → `RunAnalysis` (counts, sets, paths' parent records) |
+| `firstCompromisePath(run, assetId)` | One seed-first witness path, with checks and evidence |
+| `compareScenarios(baseline, intervention, options?)` | One-change comparison → `Result<ScenarioComparison>` |
+| `diffAnalyses(baseline, modified)` | Comparison metrics with compatibility enforcement |
+| `seekReplay` / `stepReplay` / `stepBackReplay` / `replayFinalState` / `initialReplayState` | Pure replay reducer over the event stream |
 | `fieldRefs`, `semanticProjection`, `canonicalJson` | Shared helpers for the inspector and export |
 
 A `Result` is `{ ok: true, value, diagnostics }` (warnings only) or `{ ok: false, diagnostics }`. The UI should show each diagnostic's `code`, `path`, `message` and, when present, `location` and `entity_id`. The engine accepts only `CompiledScenario`, reading its deep-frozen `effective` input; the UI must never read mutable form state during a run.
@@ -29,7 +34,15 @@ A `Result` is `{ ok: true, value, diagnostics }` (warnings only) or `{ ok: false
 - `engine_version`, `model_version`, `input_digest`: carried through for export identity.
 - `abort`: `{ code, last_processed_seq }` when aborted (`EVENT_LIMIT` or `CANCELLED`).
 
-The engine owns run state only; it never mutates the effective network. It is renderer-agnostic and takes no animation input: a UI reduces `events` to reconstruct state at a replay cursor (milestone 3 builds that reducer). Determinism comes from fixed orderings — links by `(target_id, service_id, id)`, capabilities by ID, credential witnesses by ID — so the same compiled scenario always yields the same events. Compromise is marked at enqueue, so converging paths compromise once and cycles terminate. Milestone 2 computes events, causal parent records and hops only; counts, witness-path assembly, baseline comparison and the replay reducer remain milestone 3.
+The engine owns run state only; it never mutates the effective network. It is renderer-agnostic and takes no animation input: a UI reduces `events` to reconstruct state at a replay cursor. Determinism comes from fixed orderings — links by `(target_id, service_id, id)`, capabilities by ID, credential witnesses by ID — so the same compiled scenario always yields the same events. Compromise is marked at enqueue, so converging paths compromise once and cycles terminate.
+
+## Analysis, comparison and replay (milestone 3)
+
+Three rendering-free modules consume the engine's output; none re-runs or reinterprets propagation.
+
+- **Analysis** (`src/core/analysis/analyze.ts`). `analyzeRun(compiled, run)` recomputes counts and sets from the recorded events and parent records: compromised/unaffected (a partition of the asset universe), indeterminate targets (a subset of unaffected), critical reached, attempt counts by outcome, mechanism contributions (summing to compromised − 1), blast radius, and primary blocking reasons. It marks `status: aborted` for a partial run and never publishes it as complete. `firstCompromisePath(run, assetId)` walks parent pointers to the seed and reverses, attaching each step's link, capability, attempt, resolved check facts and evidence.
+- **Comparison** (`src/core/analysis/compare.ts`). `compareScenarios(baseline, intervention, options?)` is the one-change experiment: it appends one intervention to the baseline's canonical `source` and recompiles through `compileScenario`, so the baseline is never mutated and an overlapping or invalid intervention is rejected by the compiler. It runs both snapshots on the same engine and returns both analyses, the metrics, the added intervention's manifest record and both runs. `diffAnalyses` computes absolute/relative reduction and percentage-point change (negative values shown as an increase, never clamped) and enforces the compatibility rules, refusing a comparison that involves an aborted run or a mismatched universe/seed/profile/version.
+- **Replay** (`src/core/replay/reducer.ts`). A pure reducer; see the cursor semantics in `docs/event-model.md`. A UI uses it to scrub without re-running the engine.
 
 ## How imported data becomes a validated scenario
 

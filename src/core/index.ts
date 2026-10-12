@@ -104,3 +104,23 @@ export type {
   SimulationEvent,
   SkipReason,
 } from './engine'
+
+export { analyzeRun, firstCompromisePath, compareScenarios, diffAnalyses } from './analysis'
+export type {
+  AttemptCounts,
+  ComparisonMetrics,
+  MechanismContributions,
+  PathStep,
+  RunAnalysis,
+  ScenarioComparison,
+} from './analysis'
+
+export {
+  applyEvent,
+  initialReplayState,
+  replayFinalState,
+  seekReplay,
+  stepBackReplay,
+  stepReplay,
+} from './replay'
+export type { AttemptStatus, AttemptView, ReplayParent, ReplayState } from './replay'

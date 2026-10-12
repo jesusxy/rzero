@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rzero.invalid/schema/rzero-1/common.schema.json",
+  "title": "Rzero shared definitions (rzero/1)",
+  "$comment": "The .invalid host is reserved and never resolves; schemas are distributed with the code.",
+  "$defs": {
+    "id": {
+      "description": "Case-sensitive ASCII identifier",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "idList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" }
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "textList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/text" }
+    },
+    "date": {
+      "description": "Calendar date YYYY-MM-DD",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "metadata": {
+      "description": "Free-form JSON. Never interpreted and excluded from the semantic digest.",
+      "type": "object"
+    },
+    "platform": {
+      "enum": ["windows", "linux", "macos", "unknown"]
+    },
+    "targetPlatform": {
+      "enum": ["windows", "linux", "macos"]
+    },
+    "executableServiceId": {
+      "description": "Service with a V1 evaluator",
+      "enum": ["smb", "winrm"]
+    },
+    "privilege": {
+      "enum": ["user", "admin"]
+    }
+  }
+}

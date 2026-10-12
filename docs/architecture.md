@@ -64,6 +64,8 @@ This is a proposed implementation choice, not a previously selected user require
 
 Proposed module boundaries: `domain/`, `io/`, `engine/`, `analysis/`, `replay/`, `ui/`, `fixtures/` and `docs/`. Import direction runs from adapters/UI toward core contracts, never from engine toward UI.
 
+In this repository (Solid + Vite + Bun), the core lives under `src/core/` because `src/domain/` already holds the UI prototype's mock types. Its modules are `domain/`, `io/`, `schema/`, `validation/` and `scenario/`, with `engine/`, `analysis/` and `replay/` to follow. Fixtures are in `fixtures/` and tests in `tests/`. `src/core/index.ts` is the only entry point other code may import. `tsconfig.core.json` checks the core against ECMAScript alone, and `tests/core/boundary.test.ts` rejects imports from outside the core. See `core-integration.md`.
+
 ## Scale and reproducibility
 
 Initial admission limits: 5 MiB per imported document, 250 assets, 2,000 directed links, four capabilities per profile and 50,000 events per run. These are V1 product limits, not benchmark claims. Reject oversize scenarios clearly; never return a partial result labeled complete.

@@ -62,9 +62,11 @@ A missing vulnerability entry means unknown vulnerability status, not patched. A
 
 Optional metadata can include an inventory source and notes. It is never interpreted into behavior automatically. The importer may warn that empty vulnerability data produces uncertainty for exploit capabilities.
 
+As implemented in rzero/1, `metadata` is an optional free-form object on the network, segments, assets, links and credentials, and is excluded from the input digest. Display-only facts belong there, for example `metadata.layout` positions, an OS version string or a hostname. Services, vulnerability facts and grants are closed executable facts without metadata. The importer emits `VULNERABILITY_FACT_MISSING` when an exploit capability would meet a linked target that has no fact for its vulnerability.
+
 ## Invariants and static controls
 
-Every asset belongs to an existing segment. Every link endpoint exists. Every credential reference resolves. Grants refer to existing targets; their service IDs must use the recognized native vocabulary (`smb`, `winrm` in V1). Service IDs and vulnerability IDs are unique per asset. Duplicate grants for a credential/target/service tuple are rejected rather than merged.
+Every asset belongs to an existing segment. Every link endpoint exists. Every credential reference resolves, and an asset's `credential_ids` contains no repeats. Grants refer to existing targets; their service IDs must use the recognized native vocabulary (`smb`, `winrm` in V1). Service IDs and vulnerability IDs are unique per asset. Duplicate grants for a credential/target/service tuple are rejected rather than merged.
 
 V1 models controls by exact facts: deny a service-specific boundary, mark a vulnerability absent, disable a service, revoke a grant or isolate an asset. An EDR label may be descriptive metadata but cannot block an attempt by itself. Unsupported control names are rejected if supplied as executable controls.
 

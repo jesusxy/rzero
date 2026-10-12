@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rzero.invalid/schema/rzero-1/network.schema.json",
+  "title": "Rzero network (rzero/1)",
+  "description": "Static network facts. Shape only; references, uniqueness and admission limits are checked semantically.",
+  "type": "object",
+  "required": ["segments", "assets", "links", "credentials"],
+  "additionalProperties": false,
+  "properties": {
+    "segments": { "type": "array", "items": { "$ref": "#/$defs/segment" } },
+    "assets": { "type": "array", "maxItems": 250, "items": { "$ref": "#/$defs/asset" } },
+    "links": { "type": "array", "maxItems": 2000, "items": { "$ref": "#/$defs/link" } },
+    "credentials": { "type": "array", "items": { "$ref": "#/$defs/credential" } },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "$defs": {
+    "segment": {
+      "type": "object",
+      "required": ["id", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "label": { "$ref": "common.schema.json#/$defs/label" },
+        "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "required": [
+        "id", "label", "kind", "platform", "segment_id", "critical", "isolated",
+        "services", "vulnerabilities", "credential_ids"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "label": { "$ref": "common.schema.json#/$defs/label" },
+        "kind": { "enum": ["workstation", "server", "controller", "appliance", "other"] },
+        "platform": { "$ref": "common.schema.json#/$defs/platform" },
+        "segment_id": { "$ref": "common.schema.json#/$defs/id" },
+        "critical": { "type": "boolean" },
+        "isolated": { "type": "boolean" },
+        "services": { "type": "array", "items": { "$ref": "#/$defs/service" } },
+        "vulnerabilities": { "type": "array", "items": { "$ref": "#/$defs/vulnerability" } },
+        "credential_ids": { "$ref": "common.schema.json#/$defs/idList" },
+        "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "required": ["id", "transport", "port", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "transport": { "enum": ["tcp", "udp"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "status": { "enum": ["enabled", "disabled", "unknown"] }
+      }
+    },
+    "vulnerability": {
+      "type": "object",
+      "required": ["id", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "status": { "enum": ["present", "absent", "unknown"] }
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": ["id", "source_id", "target_id", "service_id", "access"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "source_id": { "$ref": "common.schema.json#/$defs/id" },
+        "target_id": { "$ref": "common.schema.json#/$defs/id" },
+        "service_id": { "$ref": "common.schema.json#/$defs/id" },
+        "access": { "enum": ["allow", "deny", "unknown"] },
+        "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+      }
+    },
+    "credential": {
+      "type": "object",
+      "required": ["id", "label", "grants"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "label": { "$ref": "common.schema.json#/$defs/label" },
+        "grants": { "type": "array", "items": { "$ref": "#/$defs/grant" } },
+        "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+      }
+    },
+    "grant": {
+      "type": "object",
+      "required": ["target_id", "service_id", "privilege", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "target_id": { "$ref": "common.schema.json#/$defs/id" },
+        "service_id": { "$ref": "common.schema.json#/$defs/executableServiceId" },
+        "privilege": { "$ref": "common.schema.json#/$defs/privilege" },
+        "status": { "enum": ["valid", "invalid", "unknown"] }
+      }
+    }
+  }
+}

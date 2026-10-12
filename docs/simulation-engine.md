@@ -12,6 +12,8 @@ Input: a validated effective scenario and an engine version. Output: an ordered 
 
 Run state contains a FIFO queue, compromised set, discovered set, processed source set, parent records, attempt counter and event counter. Each parent record stores source, link, capability, attempt ID and hop. State is local to the run; no global mutable caches may affect later runs.
 
+Implemented in milestone 2 (`src/core/engine/`, entry `runScenario`). The engine version string is `rzero-engine/1`. `runScenario(compiled, options?)` returns a deep-frozen `RunResult` with `status` (`completed`/`aborted`), the ordered `events`, a `state` snapshot (seed ID, compromise/discovery/processing order, parent records sorted by asset ID, and a hop map including the seed at 0) and, when aborted, an `abort` of `{ code, last_processed_seq }`. Abort codes are `EVENT_LIMIT` and `CANCELLED`; a programmer fault throws rather than producing a labelled result. The event cap always reserves one slot for the terminal event, and reserves a whole attempt group (attempted, resolved, possible compromise) before starting it, so a cap or cancellation never splits a group. Cancellation is checked before each source and each link via an optional `shouldCancel()`.
+
 The seed is compromised with hop 0 and has no parent. Its vulnerability and inbound defenses are irrelevant to that supplied initial condition. Its isolation still blocks outward movement.
 
 ## Deterministic processing

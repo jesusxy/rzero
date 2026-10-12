@@ -1,6 +1,6 @@
-# Core integration and milestone 1 notes
+# Core integration notes
 
-Status: milestone 1 (native contracts) is implemented. Revision 0.1, 12 October 2026.
+Status: milestones 1 (native contracts) and 2 (deterministic engine) are implemented. Revision 0.2, 12 October 2026.
 
 ## The integration boundary
 
@@ -13,9 +13,23 @@ The frontend, the CLI (`scripts/rzero.ts`), a future simulation worker and the t
 | `validateNetwork(value)` / `validateProfile(value, { requireReviewed? })` | Standalone library objects; drafts validate but cannot run |
 | `parseDocument(...)` | Parse only (size, UTF-8, duplicate keys) |
 | `NATIVE_SCHEMAS` | The published JSON Schemas, e.g. for editor integration |
-| `fieldRefs`, `semanticProjection`, `canonicalJson` | Shared helpers for the later engine, inspector and export |
+| `runScenario(compiled, { maxEvents?, shouldCancel?, engineVersion? })` | Run the engine → deep-frozen `RunResult` |
+| `evaluateCapability`, `outcomeOf` | The mechanism evaluators, exposed for the inspector |
+| `fieldRefs`, `semanticProjection`, `canonicalJson` | Shared helpers for the inspector and export |
 
-A `Result` is `{ ok: true, value, diagnostics }` (warnings only) or `{ ok: false, diagnostics }`. The UI should show each diagnostic's `code`, `path`, `message` and, when present, `location` and `entity_id`. The engine (milestone 2) will accept only `CompiledScenario.effective`, which is deep-frozen. The UI must never read mutable form state during a run.
+A `Result` is `{ ok: true, value, diagnostics }` (warnings only) or `{ ok: false, diagnostics }`. The UI should show each diagnostic's `code`, `path`, `message` and, when present, `location` and `entity_id`. The engine accepts only `CompiledScenario`, reading its deep-frozen `effective` input; the UI must never read mutable form state during a run.
+
+## The engine (milestone 2)
+
+`runScenario(compiled)` performs the deterministic breadth-first traversal in `docs/simulation-engine.md` and returns a deep-frozen `RunResult`:
+
+- `status`: `completed` or `aborted`.
+- `events`: the ordered `SimulationEvent[]` (the exportable, replayable artifact). Each has `event_id`, `seq`, `type`, `hop`; see `docs/event-model.md`.
+- `state`: `FinalRunState` for analysis and replay — `seed_id`, `compromised`/`discovered`/`processed` in engine order, `parents` (first-compromise records sorted by asset ID, each with link, capability, attempt and hop) and a `hops` map including the seed at 0.
+- `engine_version`, `model_version`, `input_digest`: carried through for export identity.
+- `abort`: `{ code, last_processed_seq }` when aborted (`EVENT_LIMIT` or `CANCELLED`).
+
+The engine owns run state only; it never mutates the effective network. It is renderer-agnostic and takes no animation input: a UI reduces `events` to reconstruct state at a replay cursor (milestone 3 builds that reducer). Determinism comes from fixed orderings — links by `(target_id, service_id, id)`, capabilities by ID, credential witnesses by ID — so the same compiled scenario always yields the same events. Compromise is marked at enqueue, so converging paths compromise once and cycles terminate. Milestone 2 computes events, causal parent records and hops only; counts, witness-path assembly, baseline comparison and the replay reducer remain milestone 3.
 
 ## How imported data becomes a validated scenario
 
@@ -71,4 +85,5 @@ bun run test                       # unit tests (bun test)
 bun run typecheck                  # tsc -b: app, core (ES-only), tests, vite config
 bun run build                      # typecheck + Vite production build
 bun run rzero validate fixtures/scenarios/001-five-node-baseline.yaml
+bun run rzero run      fixtures/scenarios/001-five-node-baseline.json   # print the event stream
 ```

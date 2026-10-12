@@ -1,0 +1,97 @@
+{
+  "model_version": "rzero/1",
+  "id": "canonical-001",
+  "name": "Five-node lab baseline",
+  "network": {
+    "segments": [
+      { "id": "lab", "label": "Lab" }
+    ],
+    "assets": [
+      {
+        "id": "A", "label": "LAB-WS-A", "kind": "workstation",
+        "platform": "windows", "segment_id": "lab",
+        "critical": false, "isolated": false,
+        "services": [{ "id": "smb", "transport": "tcp", "port": 445, "status": "enabled" }],
+        "vulnerabilities": [{ "id": "LAB-SMB-1", "status": "present" }],
+        "credential_ids": []
+      },
+      {
+        "id": "B", "label": "LAB-WS-B", "kind": "workstation",
+        "platform": "windows", "segment_id": "lab",
+        "critical": false, "isolated": false,
+        "services": [{ "id": "smb", "transport": "tcp", "port": 445, "status": "enabled" }],
+        "vulnerabilities": [{ "id": "LAB-SMB-1", "status": "present" }],
+        "credential_ids": []
+      },
+      {
+        "id": "C", "label": "LAB-WS-C", "kind": "workstation",
+        "platform": "windows", "segment_id": "lab",
+        "critical": false, "isolated": false,
+        "services": [{ "id": "smb", "transport": "tcp", "port": 445, "status": "enabled" }],
+        "vulnerabilities": [{ "id": "LAB-SMB-1", "status": "present" }],
+        "credential_ids": []
+      },
+      {
+        "id": "D", "label": "LAB-SRV-D", "kind": "server",
+        "platform": "windows", "segment_id": "lab",
+        "critical": false, "isolated": false,
+        "services": [{ "id": "smb", "transport": "tcp", "port": 445, "status": "enabled" }],
+        "vulnerabilities": [{ "id": "LAB-SMB-1", "status": "present" }],
+        "credential_ids": []
+      },
+      {
+        "id": "E", "label": "LAB-SRV-E", "kind": "server",
+        "platform": "windows", "segment_id": "lab",
+        "critical": false, "isolated": false,
+        "services": [{ "id": "smb", "transport": "tcp", "port": 445, "status": "enabled" }],
+        "vulnerabilities": [{ "id": "LAB-SMB-1", "status": "absent" }],
+        "credential_ids": []
+      }
+    ],
+    "links": [
+      { "id": "ab", "source_id": "A", "target_id": "B", "service_id": "smb", "access": "allow" },
+      { "id": "ac", "source_id": "A", "target_id": "C", "service_id": "smb", "access": "deny" },
+      { "id": "bd", "source_id": "B", "target_id": "D", "service_id": "smb", "access": "allow" },
+      { "id": "de", "source_id": "D", "target_id": "E", "service_id": "smb", "access": "allow" }
+    ],
+    "credentials": []
+  },
+  "profile": {
+    "id": "lab-worm",
+    "version": "1",
+    "name": "Lab SMB Worm",
+    "scope": "synthetic",
+    "review_status": "reviewed",
+    "sources": [
+      {
+        "id": "lab-definition",
+        "kind": "synthetic",
+        "title": "Canonical lab rule",
+        "local_reference": "docs/validation-scenarios.md",
+        "accessed_on": "2026-10-12",
+        "claim_summary": "Enabled SMB plus LAB-SMB-1 permits modeled compromise."
+      }
+    ],
+    "capabilities": [
+      {
+        "id": "smb-exploit",
+        "label": "Synthetic SMB exploit",
+        "mechanism": "remote_exploit",
+        "service_id": "smb",
+        "target_platforms": ["windows"],
+        "vulnerability_id": "LAB-SMB-1",
+        "evidence_ids": ["lab-definition"],
+        "confidence": "high",
+        "assumptions": ["A passing exploit yields execution; no real exploit is performed."]
+      }
+    ],
+    "limitations": ["Synthetic teaching rule; not a real malware family."]
+  },
+  "initial_asset_id": "A",
+  "interventions": [],
+  "metadata": {
+    "synthetic": true,
+    "canonical_case": "001",
+    "notes": "Canonical scenario 001 from docs/validation-scenarios.md. LAB-SMB-1 is a synthetic test weakness, not a CVE or a real exploit."
+  }
+}

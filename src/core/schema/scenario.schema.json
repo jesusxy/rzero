@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rzero.invalid/schema/rzero-1/scenario.schema.json",
+  "title": "Rzero scenario (rzero/1)",
+  "description": "Native scenario envelope: network facts, one embedded profile, one initial asset and static interventions.",
+  "type": "object",
+  "required": ["model_version", "id", "name", "network", "profile", "initial_asset_id", "interventions"],
+  "additionalProperties": false,
+  "properties": {
+    "model_version": { "const": "rzero/1" },
+    "id": { "$ref": "common.schema.json#/$defs/id" },
+    "name": { "$ref": "common.schema.json#/$defs/label" },
+    "network": { "$ref": "network.schema.json" },
+    "profile": { "$ref": "profile.schema.json" },
+    "initial_asset_id": { "$ref": "common.schema.json#/$defs/id" },
+    "interventions": { "type": "array", "items": { "$ref": "#/$defs/intervention" } },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "$defs": {
+    "intervention": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "enum": [
+            "set_boundary_access",
+            "set_vulnerability_status",
+            "set_service_status",
+            "set_asset_isolation",
+            "set_grant_status"
+          ]
+        },
+        "id": { "$ref": "common.schema.json#/$defs/id" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "set_boundary_access" } }, "required": ["type"] },
+          "then": {
+            "required": ["from_segment_id", "to_segment_id", "service_id", "access"],
+            "additionalProperties": false,
+            "properties": {
+              "type": true,
+              "id": true,
+              "from_segment_id": { "$ref": "common.schema.json#/$defs/id" },
+              "to_segment_id": { "$ref": "common.schema.json#/$defs/id" },
+              "service_id": { "$ref": "common.schema.json#/$defs/id" },
+              "access": { "enum": ["allow", "deny", "unknown"] },
+              "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "set_vulnerability_status" } }, "required": ["type"] },
+          "then": {
+            "required": ["asset_id", "vulnerability_id", "status"],
+            "additionalProperties": false,
+            "properties": {
+              "type": true,
+              "id": true,
+              "asset_id": { "$ref": "common.schema.json#/$defs/id" },
+              "vulnerability_id": { "$ref": "common.schema.json#/$defs/id" },
+              "status": { "enum": ["present", "absent", "unknown"] },
+              "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "set_service_status" } }, "required": ["type"] },
+          "then": {
+            "required": ["asset_id", "service_id", "status"],
+            "additionalProperties": false,
+            "properties": {
+              "type": true,
+              "id": true,
+              "asset_id": { "$ref": "common.schema.json#/$defs/id" },
+              "service_id": { "$ref": "common.schema.json#/$defs/id" },
+              "status": { "enum": ["enabled", "disabled", "unknown"] },
+              "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "set_asset_isolation" } }, "required": ["type"] },
+          "then": {
+            "required": ["asset_id", "isolated"],
+            "additionalProperties": false,
+            "properties": {
+              "type": true,
+              "id": true,
+              "asset_id": { "$ref": "common.schema.json#/$defs/id" },
+              "isolated": { "type": "boolean" },
+              "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "set_grant_status" } }, "required": ["type"] },
+          "then": {
+            "required": ["credential_id", "target_id", "service_id", "status"],
+            "additionalProperties": false,
+            "properties": {
+              "type": true,
+              "id": true,
+              "credential_id": { "$ref": "common.schema.json#/$defs/id" },
+              "target_id": { "$ref": "common.schema.json#/$defs/id" },
+              "service_id": { "$ref": "common.schema.json#/$defs/executableServiceId" },
+              "status": { "enum": ["valid", "invalid", "unknown"] },
+              "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

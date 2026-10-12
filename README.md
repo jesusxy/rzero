@@ -14,6 +14,23 @@ bun dev
 The app runs on the Vite development server, usually at
 `http://localhost:5173`.
 
+```bash
+bun run test        # domain core unit tests
+bun run build       # type-check app, core and tests, then build
+bun run rzero validate fixtures/scenarios/001-five-node-baseline.json
+```
+
+## Layout
+
+- `src/core/` — UI-independent domain core: native types, JSON Schemas,
+  JSON/restricted-YAML import, validation and scenario compilation. Import it
+  only through `src/core/index.ts`.
+- `src/components/`, `src/App.tsx` — Solid UI shell (prototype).
+- `src/domain/`, `src/data/` — prototype UI mock types and data; illustrative
+  only, see `docs/core-integration.md`.
+- `fixtures/scenarios/` — canonical synthetic scenarios (JSON and YAML).
+- `docs/` — design contract; start with `docs/architecture.md`.
+
 ## Current direction
 
 - Solid + TypeScript for the UI shell

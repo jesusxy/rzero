@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rzero.invalid/schema/rzero-1/profile.schema.json",
+  "title": "Rzero native malware profile (rzero/1)",
+  "description": "Reviewed capability records. Not a STIX object; STIX/ATT&CK/MBC identifiers are provenance and navigation only.",
+  "type": "object",
+  "required": [
+    "id", "version", "name", "scope", "review_status", "sources", "capabilities", "limitations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "$ref": "common.schema.json#/$defs/id" },
+    "version": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "name": { "$ref": "common.schema.json#/$defs/label" },
+    "scope": { "enum": ["synthetic", "family", "sample"] },
+    "sha256": {
+      "description": "Lowercase SHA-256 of the sample binary",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "review_status": { "enum": ["draft", "reviewed"] },
+    "sources": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/source" } },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/capability" }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "common.schema.json#/$defs/text" }
+    },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "scope": { "const": "sample" } }, "required": ["scope"] },
+      "then": { "required": ["sha256"] },
+      "else": { "properties": { "sha256": false } }
+    }
+  ],
+  "$defs": {
+    "source": {
+      "type": "object",
+      "required": ["id", "kind", "title", "accessed_on", "claim_summary"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "kind": { "enum": ["research", "attack", "mbc", "sandbox", "synthetic"] },
+        "title": { "$ref": "common.schema.json#/$defs/label" },
+        "url": { "type": "string", "maxLength": 2048, "pattern": "^https?://[^\\s]+$" },
+        "local_reference": { "$ref": "common.schema.json#/$defs/label" },
+        "accessed_on": { "$ref": "common.schema.json#/$defs/date" },
+        "claim_summary": { "$ref": "common.schema.json#/$defs/text" },
+        "external_object_id": { "$ref": "common.schema.json#/$defs/label" },
+        "external_version": { "$ref": "common.schema.json#/$defs/label" },
+        "publication_date": { "$ref": "common.schema.json#/$defs/date" },
+        "locator": { "$ref": "common.schema.json#/$defs/label" },
+        "license_note": { "$ref": "common.schema.json#/$defs/text" },
+        "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+      },
+      "anyOf": [
+        { "required": ["url"] },
+        { "required": ["local_reference"] }
+      ]
+    },
+    "capability": {
+      "type": "object",
+      "required": [
+        "id", "label", "mechanism", "service_id", "target_platforms",
+        "evidence_ids", "confidence", "assumptions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/id" },
+        "label": { "$ref": "common.schema.json#/$defs/label" },
+        "mechanism": { "enum": ["remote_exploit", "remote_execution"] },
+        "service_id": { "$ref": "common.schema.json#/$defs/executableServiceId" },
+        "target_platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/targetPlatform" }
+        },
+        "vulnerability_id": { "$ref": "common.schema.json#/$defs/id" },
+        "minimum_privilege": { "$ref": "common.schema.json#/$defs/privilege" },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/id" }
+        },
+        "confidence": { "enum": ["low", "medium", "high"] },
+        "assumptions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "common.schema.json#/$defs/text" }
+        },
+        "technique_refs": {
+          "description": "ATT&CK technique IDs, navigation only",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^T[0-9]{4}(\\.[0-9]{3})?$" }
+        },
+        "behavior_refs": {
+          "description": "MBC identifiers, navigation only",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Z]{1,2}[0-9]{4}(\\.[0-9]{3})?$" }
+        },
+        "metadata": { "$ref": "common.schema.json#/$defs/metadata" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mechanism": { "const": "remote_exploit" } }, "required": ["mechanism"] },
+          "then": { "required": ["vulnerability_id"], "properties": { "minimum_privilege": false } }
+        },
+        {
+          "if": { "properties": { "mechanism": { "const": "remote_execution" } }, "required": ["mechanism"] },
+          "then": { "required": ["minimum_privilege"], "properties": { "vulnerability_id": false } }
+        }
+      ]
+    }
+  }
+}

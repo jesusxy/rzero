@@ -65,7 +65,9 @@ function projectedPoints(pointsToJoin: MapPosition[]) {
   return points(pointsToJoin.map(project))
 }
 
-function routePoints(edge: NetworkEdge, nodes: AssetNode[]) {
+// Exported while the edge layer below is commented out, so noUnusedLocals
+// does not fail the build. Unexport once routes are rendered again.
+export function routePoints(edge: NetworkEdge, nodes: AssetNode[]) {
   if (edge.route) {
     return projectedPoints(edge.route)
   }

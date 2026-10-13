@@ -496,3 +496,100 @@ describe('011 — bounded input: event cap and cancellation', () => {
     expect(result.state.compromised.length).toBeGreaterThanOrEqual(1)
   })
 })
+
+describe('credential attribution — a blocked attempt keeps its evidence', () => {
+  // A→B over WinRM; B exposes WinRM; the WinRM execution profile requires admin.
+  const winrmLab = (
+    credentials: unknown[],
+    credentialIds: string[],
+    interventions: unknown[] = [],
+  ): LabSpec => ({
+    assets: {
+      A: { credential_ids: credentialIds },
+      B: { services: [{ id: 'winrm', transport: 'tcp', port: 5985, status: 'enabled' }], vulnerabilities: [] },
+    },
+    links: [{ id: 'ab', source: 'A', target: 'B', service: 'winrm' }],
+    profile: winrmProfile(),
+    credentials,
+    interventions,
+  })
+
+  test('a grant revoked by an intervention blocks, naming the credential and intervention', () => {
+    const result = runLab(
+      winrmLab(
+        [{ id: 'cred-a', label: 'Admin', grants: [{ target_id: 'B', service_id: 'winrm', privilege: 'admin', status: 'valid' }] }],
+        ['cred-a'],
+        [{ type: 'set_grant_status', id: 'revoke-a', credential_id: 'cred-a', target_id: 'B', service_id: 'winrm', status: 'invalid' }],
+      ),
+    )
+    expect(compromised(result)).toEqual(['A'])
+    const check = resolvedEvents(result)[0]!.checks.find((c) => c.code === 'CREDENTIAL_AUTHORIZED')!
+    expect(check.status).toBe('fail')
+    expect(check.observed).toBe('invalid:admin') // the revoked grant, not "none"
+    expect(check.entity_refs).toEqual(['cred-a'])
+    expect(check.intervention_ids).toEqual(['revoke-a'])
+  })
+
+  test('an absent grant is distinguished from a matching invalid grant', () => {
+    // A grant for B over a different service does not match the WinRM lookup.
+    const result = runLab(
+      winrmLab(
+        [{ id: 'cred-a', label: 'Admin', grants: [{ target_id: 'B', service_id: 'smb', privilege: 'admin', status: 'valid' }] }],
+        ['cred-a'],
+      ),
+    )
+    const check = resolvedEvents(result)[0]!.checks.find((c) => c.code === 'CREDENTIAL_AUTHORIZED')!
+    expect(check.status).toBe('fail')
+    expect(check.observed).toBe('none') // no grant for B/winrm at all
+    expect(check.entity_refs).toEqual([])
+    expect(check.intervention_ids).toBeUndefined()
+  })
+
+  test('an underprivileged valid grant fails but is still reported, not "none"', () => {
+    const result = runLab(
+      winrmLab(
+        [{ id: 'cred-a', label: 'User', grants: [{ target_id: 'B', service_id: 'winrm', privilege: 'user', status: 'valid' }] }],
+        ['cred-a'],
+      ),
+    )
+    const check = resolvedEvents(result)[0]!.checks.find((c) => c.code === 'CREDENTIAL_AUTHORIZED')!
+    expect(check.status).toBe('fail')
+    expect(check.observed).toBe('valid:user') // valid but below the required admin
+    expect(check.entity_refs).toEqual(['cred-a'])
+  })
+
+  test('a second valid credential still authorizes even when the first is revoked', () => {
+    const result = runLab(
+      winrmLab(
+        [
+          { id: 'cred-a', label: 'Revoked', grants: [{ target_id: 'B', service_id: 'winrm', privilege: 'admin', status: 'valid' }] },
+          { id: 'cred-b', label: 'Still valid', grants: [{ target_id: 'B', service_id: 'winrm', privilege: 'admin', status: 'valid' }] },
+        ],
+        ['cred-a', 'cred-b'],
+        [{ type: 'set_grant_status', id: 'revoke-a', credential_id: 'cred-a', target_id: 'B', service_id: 'winrm', status: 'invalid' }],
+      ),
+    )
+    expect(compromised(result)).toEqual(['A', 'B'])
+    const check = resolvedEvents(result)[0]!.checks.find((c) => c.code === 'CREDENTIAL_AUTHORIZED')!
+    expect(check.status).toBe('pass')
+    expect(check.observed).toBe('valid:admin')
+    expect(check.entity_refs).toEqual(['cred-b']) // the authorizing credential, not the revoked one
+    expect(check.intervention_ids).toBeUndefined() // the revocation is not blamed for a success
+  })
+
+  test('the pass/fail/unknown outcome rules are unchanged', () => {
+    const outcome = (status: string, privilege: string) =>
+      resolvedEvents(
+        runLab(
+          winrmLab(
+            [{ id: 'cred-a', label: 'c', grants: [{ target_id: 'B', service_id: 'winrm', privilege, status }] }],
+            ['cred-a'],
+          ),
+        ),
+      )[0]!.checks.find((c) => c.code === 'CREDENTIAL_AUTHORIZED')!.status
+    expect(outcome('valid', 'admin')).toBe('pass')
+    expect(outcome('unknown', 'admin')).toBe('unknown')
+    expect(outcome('invalid', 'admin')).toBe('fail')
+    expect(outcome('valid', 'user')).toBe('fail') // insufficient privilege
+  })
+})

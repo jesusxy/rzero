@@ -7,7 +7,7 @@
 // can show two simultaneous barriers. Unknown is a distinct status, never a
 // probability, and a missing fact is unknown — never silently safe.
 
-import type { Asset, Link, Privilege } from '../domain/network'
+import type { Asset, Grant, Link, Privilege } from '../domain/network'
 import type { Capability } from '../domain/profile'
 import { fieldRefs } from '../scenario/interventions'
 import type { Check, CheckStatus, Outcome } from './events'
@@ -158,14 +158,20 @@ function credentialCheck(
   context: EvaluationContext,
 ): Check {
   const required = PRIVILEGE_RANK[capability.minimum_privilege]
-  let valid: { credentialId: string; grant: { status: string; privilege: Privilege } } | undefined
-  let unknown: typeof valid
+  type Witness = { credentialId: string; grant: Grant }
+  let valid: Witness | undefined
+  let unknown: Witness | undefined
+  // The first matching (target, service) grant by credential ID, whatever its
+  // status or privilege. It explains a failure — an invalid or underprivileged
+  // grant — and distinguishes that from no matching grant at all.
+  let matched: Witness | undefined
 
   for (const credentialId of [...source.credential_ids].sort()) {
     const grant = context.credentials.grants
       .get(credentialId)
       ?.get(grantKey(target.id, capability.service_id))
     if (grant === undefined) continue
+    matched ??= { credentialId, grant }
     if (PRIVILEGE_RANK[grant.privilege] < required) continue // insufficient privilege does not qualify
     if (grant.status === 'valid') {
       valid ??= { credentialId, grant }
@@ -174,8 +180,11 @@ function credentialCheck(
     }
   }
 
-  const witness = valid ?? unknown
   const status: CheckStatus = valid !== undefined ? 'pass' : unknown !== undefined ? 'unknown' : 'fail'
+  // On pass/unknown the qualifying grant is the witness, so a revoked grant on
+  // another credential never displaces a credential that still authorizes
+  // access. Only a genuine failure falls back to the matching grant.
+  const witness = valid ?? unknown ?? matched
   const fieldRef =
     witness === undefined
       ? undefined

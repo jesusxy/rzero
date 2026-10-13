@@ -11,7 +11,66 @@ import {
   type SimulationEvent,
 } from '../../src/core'
 import { expectCompiled, fixtureText } from './helpers'
-import { compileLab } from './engine-helpers'
+import { compileLab, type AssetOverride, type LinkSpec } from './engine-helpers'
+
+/**
+ * A run whose stream exceeds the 1000-event checkpoint interval, so seeks start
+ * from a non-zero checkpoint. Chain nodes C0→C1→… are compromised (present
+ * vulnerability); each also fans out to sinks with an absent vulnerability, so
+ * every fan link is a full four-capability blocked attempt that is never
+ * skipped. ~1250 events with chain=5, sinks=30.
+ */
+function denseCompiled(chain = 5, sinks = 30) {
+  const fourCapProfile = {
+    id: 'lab-four',
+    version: '1',
+    name: 'Four-capability lab worm',
+    scope: 'synthetic',
+    review_status: 'reviewed',
+    sources: [
+      {
+        id: 'lab-def',
+        kind: 'synthetic',
+        title: 'Canonical lab rule',
+        local_reference: 'docs/validation-scenarios.md',
+        accessed_on: '2026-10-12',
+        claim_summary: 'Synthetic.',
+      },
+    ],
+    capabilities: [1, 2, 3, 4].map((n) => ({
+      id: `cap-${n}`,
+      label: `Synthetic SMB exploit ${n}`,
+      mechanism: 'remote_exploit',
+      service_id: 'smb',
+      target_platforms: ['windows'],
+      vulnerability_id: 'LAB-SMB-1',
+      evidence_ids: ['lab-def'],
+      confidence: 'high',
+      assumptions: ['Synthetic.'],
+    })),
+    limitations: ['Synthetic benchmark profile.'],
+  }
+  const assets: Record<string, AssetOverride> = {}
+  for (let i = 0; i < chain; i += 1) assets[`C${i}`] = {}
+  for (let i = 0; i < sinks; i += 1) assets[`S${i}`] = { vulnerabilities: [{ id: 'LAB-SMB-1', status: 'absent' }] }
+  const links: LinkSpec[] = []
+  for (let i = 0; i < chain - 1; i += 1) links.push({ id: `ch-${i}`, source: `C${i}`, target: `C${i + 1}` })
+  for (let c = 0; c < chain; c += 1) {
+    for (let s = 0; s < sinks; s += 1) links.push({ id: `fan-${c}-${s}`, source: `C${c}`, target: `S${s}` })
+  }
+  return compileLab({ assets, links, profile: fourCapProfile, seed: 'C0' })
+}
+
+function denseRun(chain = 5, sinks = 30): RunResult {
+  return runScenario(denseCompiled(chain, sinks))
+}
+
+/** Independent reference fold from event 0 via single steps (no checkpoint cache). */
+function foldTo(events: readonly SimulationEvent[], n: number) {
+  let state = initialReplayState()
+  for (let i = 0; i < n; i += 1) state = stepReplay(events, state)
+  return state
+}
 
 function fiveNodeRun(): RunResult {
   return runScenario(expectCompiled(importScenario(fixtureText('001-five-node-baseline.json'))))
@@ -185,5 +244,62 @@ describe('replay reducer — aborted streams', () => {
     const final = replayFinalState(run.events)
     expect(final.terminal).toBe('aborted')
     expect([...final.compromised].sort()).toEqual([...run.state.compromised].sort())
+  })
+})
+
+describe('replay reducer — checkpointed seeking over a long stream (>1000 events)', () => {
+  const run = denseRun()
+
+  test('the stream crosses the checkpoint interval and only the chain is compromised', () => {
+    expect(run.events.length).toBeGreaterThan(1000)
+    expect(run.status).toBe('completed')
+    // Sinks have an absent vulnerability: many blocked attempts, never compromised.
+    expect(run.state.compromised).toEqual(['C0', 'C1', 'C2', 'C3', 'C4'])
+    const blocked = run.events.filter((e) => e.type === 'propagation_resolved' && e.outcome === 'blocked')
+    expect(blocked.length).toBeGreaterThan(100)
+  })
+
+  test('forward step, seek, backward step and final replay all agree with a from-zero fold', () => {
+    const cursors = [0, 1, 500, 999, 1000, 1001, 1200, run.events.length - 1, run.events.length]
+    for (const n of cursors) {
+      const reference = foldTo(run.events, n) // independent, no checkpoints
+      expect(seekReplay(run.events, n)).toEqual(reference)
+    }
+    // final replay matches the engine's recorded final state
+    const final = replayFinalState(run.events)
+    expect([...final.compromised].sort()).toEqual([...run.state.compromised].sort())
+    expect(final.hops).toEqual(run.state.hops)
+    // a backward step from a cursor past the checkpoint equals the from-zero fold
+    const past = seekReplay(run.events, 1200)
+    expect(stepBackReplay(run.events, past)).toEqual(foldTo(run.events, 1199))
+  })
+
+  test('blocked attempts are recorded in the ledger but never compromise their target', () => {
+    const final = replayFinalState(run.events)
+    const blockedEntry = Object.values(final.attempts).find((a) => a.status === 'blocked')
+    expect(blockedEntry).toBeDefined()
+    expect(final.compromised).not.toContain(blockedEntry!.target_id)
+  })
+
+  test('an earlier returned state does not change when replay advances', () => {
+    const early = seekReplay(run.events, 300)
+    const fingerprint = JSON.stringify(early)
+    expect(Object.isFrozen(early)).toBe(true)
+    expect(Object.isFrozen(early.attempts)).toBe(true)
+    // advance replay elsewhere
+    seekReplay(run.events, 1200)
+    stepReplay(run.events, early)
+    replayFinalState(run.events)
+    stepBackReplay(run.events, early)
+    expect(JSON.stringify(early)).toBe(fingerprint)
+  })
+
+  test('an aborted long run replays to its partial state via checkpoints', () => {
+    // Re-run the same dense scenario with a tight cap to force an abort mid-stream.
+    const capped = runScenario(denseCompiled(), { maxEvents: 1200 })
+    expect(capped.status).toBe('aborted')
+    const final = replayFinalState(capped.events)
+    expect(final.terminal).toBe('aborted')
+    expect(final).toEqual(foldTo(capped.events, capped.events.length))
   })
 })

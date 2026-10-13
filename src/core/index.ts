@@ -77,3 +77,50 @@ export {
 } from './scenario/compile'
 export { fieldRefs } from './scenario/interventions'
 export { semanticProjection } from './scenario/canonical'
+
+export { ENGINE_VERSION, runScenario, evaluateCapability, outcomeOf } from './engine'
+export type {
+  AbortCode,
+  AssetCompromisedEvent,
+  AssetDiscoveredEvent,
+  Check,
+  CheckCode,
+  CheckStatus,
+  Evaluation,
+  EvaluationContext,
+  EventType,
+  FinalRunState,
+  Outcome,
+  ParentRecord,
+  PropagationAttemptedEvent,
+  PropagationResolvedEvent,
+  PropagationSkippedEvent,
+  RunAbortedEvent,
+  RunCompletedEvent,
+  RunOptions,
+  RunResult,
+  RunStartedEvent,
+  RunStatus,
+  SimulationEvent,
+  SkipReason,
+} from './engine'
+
+export { analyzeRun, firstCompromisePath, compareScenarios, diffAnalyses } from './analysis'
+export type {
+  AttemptCounts,
+  ComparisonMetrics,
+  MechanismContributions,
+  PathStep,
+  RunAnalysis,
+  ScenarioComparison,
+} from './analysis'
+
+export {
+  applyEvent,
+  initialReplayState,
+  replayFinalState,
+  seekReplay,
+  stepBackReplay,
+  stepReplay,
+} from './replay'
+export type { AttemptStatus, AttemptView, ReplayParent, ReplayState } from './replay'

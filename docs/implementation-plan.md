@@ -17,7 +17,7 @@ This package is a proposed specification, not production code or a claim that te
 | 5. Curated demonstrations | Two evidence-reviewed real profiles and small environments | Capability-by-capability provenance review; limitations visible |
 | 6. Release polish | Import/export, errors, cancellation, performance and accessibility | Full canonical suite and measured UI acceptance checks |
 
-Status: milestone 1 is implemented and reviewable (`bun run test`, `bun run build`). See `core-integration.md` for the boundary, the remaining frontend assumptions and the decisions taken within the contract.
+Status: milestones 1 (native contracts), 2 (deterministic core) and 3 (analysis, comparison and replay) are implemented and reviewable (`bun run test`, `bun run build`). See `core-integration.md` for the boundary, the engine/analysis/replay entry points, the remaining frontend assumptions and the decisions taken within the contract.
 
 Do not couple engine progress to animation. Implement the causal inspector before adding elaborate visual effects. A beautiful map with fabricated decisions does not satisfy milestone 4.
 

@@ -1,10 +1,12 @@
-# Core integration and milestone 1 notes
+# Core integration notes
 
-Status: milestone 1 (native contracts) is implemented. Revision 0.1, 12 October 2026.
+Status: milestones 1 (native contracts), 2 (deterministic engine) and 3 (analysis, comparison, replay) are implemented. Revision 0.3, 12 October 2026.
 
 ## The integration boundary
 
-The frontend, the CLI (`scripts/rzero.ts`), a future simulation worker and the tests all import from **`src/core/index.ts`** and nothing deeper. The core is plain ECMAScript with one runtime dependency (`yaml`). It has no DOM, Node, Bun or Solid imports: `tsconfig.core.json` type-checks it against `ES2023` alone, and `tests/core/boundary.test.ts` enforces both rules.
+The frontend, the CLI (`scripts/rzero.ts`), a future simulation worker and the tests all import from **`src/core/index.ts`** and nothing deeper. The core is plain ECMAScript with one runtime dependency (`yaml`). It has no DOM, Node, Bun or Solid imports: `tsconfig.core.json` type-checks it against `ES2023` plus one sanctioned addition, and `tests/core/boundary.test.ts` enforces both rules.
+
+**Platform restrictions.** The core may use exactly one set of globals beyond ECMAScript: the host-neutral WHATWG Encoding primitives `TextEncoder`/`TextDecoder`, which are synchronous and present in browsers, Web Workers, Node and Bun. They are declared on their own in `types/platform-encoding.d.ts`, included only by the core project (the app gets them from its DOM lib), so the core's type environment still excludes the DOM, Node and Bun libraries. UTF-8 handling (`io/utf8.ts`) uses these. Two other primitives stay deliberately custom: the SHA-256 for the canonical digest (`scenario/sha256.ts`) — because the only universal platform digest, WebCrypto, is asynchronous and the digest is computed on the synchronous compile path; and the JSON Schema validator (`schema/validator.ts`) — because it is the single source of the stable `DiagnosticCode`/path error contract and a general validator (Ajv) would add a browser dependency that defaults to `eval`-based codegen and an error-mapping layer. Ajv is kept as a dev-only oracle in the schema tests.
 
 | Call | Use |
 | --- | --- |
@@ -13,9 +15,36 @@ The frontend, the CLI (`scripts/rzero.ts`), a future simulation worker and the t
 | `validateNetwork(value)` / `validateProfile(value, { requireReviewed? })` | Standalone library objects; drafts validate but cannot run |
 | `parseDocument(...)` | Parse only (size, UTF-8, duplicate keys) |
 | `NATIVE_SCHEMAS` | The published JSON Schemas, e.g. for editor integration |
-| `fieldRefs`, `semanticProjection`, `canonicalJson` | Shared helpers for the later engine, inspector and export |
+| `runScenario(compiled, { maxEvents?, shouldCancel?, engineVersion? })` | Run the engine → deep-frozen `RunResult` |
+| `evaluateCapability`, `outcomeOf` | The mechanism evaluators, exposed for the inspector |
+| `analyzeRun(compiled, run)` | Summarize a run → `RunAnalysis` (counts, sets, paths' parent records) |
+| `firstCompromisePath(run, assetId)` | One seed-first witness path, with checks and evidence |
+| `compareScenarios(baseline, intervention, options?)` | One-change comparison → `Result<ScenarioComparison>` |
+| `diffAnalyses(baseline, modified)` | Comparison metrics with compatibility enforcement |
+| `seekReplay` / `stepReplay` / `stepBackReplay` / `replayFinalState` / `initialReplayState` | Pure replay reducer over the event stream |
+| `fieldRefs`, `semanticProjection`, `canonicalJson` | Shared helpers for the inspector and export |
 
-A `Result` is `{ ok: true, value, diagnostics }` (warnings only) or `{ ok: false, diagnostics }`. The UI should show each diagnostic's `code`, `path`, `message` and, when present, `location` and `entity_id`. The engine (milestone 2) will accept only `CompiledScenario.effective`, which is deep-frozen. The UI must never read mutable form state during a run.
+A `Result` is `{ ok: true, value, diagnostics }` (warnings only) or `{ ok: false, diagnostics }`. The UI should show each diagnostic's `code`, `path`, `message` and, when present, `location` and `entity_id`. The engine accepts only `CompiledScenario`, reading its deep-frozen `effective` input; the UI must never read mutable form state during a run.
+
+## The engine (milestone 2)
+
+`runScenario(compiled)` performs the deterministic breadth-first traversal in `docs/simulation-engine.md` and returns a deep-frozen `RunResult`:
+
+- `status`: `completed` or `aborted`.
+- `events`: the ordered `SimulationEvent[]` (the exportable, replayable artifact). Each has `event_id`, `seq`, `type`, `hop`; see `docs/event-model.md`.
+- `state`: `FinalRunState` for analysis and replay — `seed_id`, `compromised`/`discovered`/`processed` in engine order, `parents` (first-compromise records sorted by asset ID, each with link, capability, attempt and hop) and a `hops` map including the seed at 0.
+- `engine_version`, `model_version`, `input_digest`: carried through for export identity.
+- `abort`: `{ code, last_processed_seq }` when aborted (`EVENT_LIMIT` or `CANCELLED`).
+
+The engine owns run state only; it never mutates the effective network. It is renderer-agnostic and takes no animation input: a UI reduces `events` to reconstruct state at a replay cursor. Determinism comes from fixed orderings — links by `(target_id, service_id, id)`, capabilities by ID, credential witnesses by ID — so the same compiled scenario always yields the same events. Compromise is marked at enqueue, so converging paths compromise once and cycles terminate.
+
+## Analysis, comparison and replay (milestone 3)
+
+Three rendering-free modules consume the engine's output; none re-runs or reinterprets propagation.
+
+- **Analysis** (`src/core/analysis/analyze.ts`). `analyzeRun(compiled, run)` recomputes counts and sets from the recorded events and parent records: compromised/unaffected (a partition of the asset universe), indeterminate targets (a subset of unaffected), critical reached, attempt counts by outcome, mechanism contributions (summing to compromised − 1), blast radius, and primary blocking reasons. It marks `status: aborted` for a partial run and never publishes it as complete. `firstCompromisePath(run, assetId)` walks parent pointers to the seed and reverses, attaching each step's link, capability, attempt, resolved check facts and evidence.
+- **Comparison** (`src/core/analysis/compare.ts`). `compareScenarios(baseline, intervention, options?)` is the one-change experiment: it appends one intervention to the baseline's canonical `source` and recompiles through `compileScenario`, so the baseline is never mutated and an overlapping or invalid intervention is rejected by the compiler. It runs both snapshots on the same engine and returns both analyses, the metrics, the added intervention's manifest record and both runs. `diffAnalyses` computes absolute/relative reduction and percentage-point change (negative values shown as an increase, never clamped) and enforces the compatibility rules, refusing a comparison that involves an aborted run or a mismatched universe/seed/profile/version.
+- **Replay** (`src/core/replay/reducer.ts`). A pure reducer; see the cursor semantics in `docs/event-model.md`. A UI uses it to scrub without re-running the engine.
 
 ## How imported data becomes a validated scenario
 
@@ -71,4 +100,5 @@ bun run test                       # unit tests (bun test)
 bun run typecheck                  # tsc -b: app, core (ES-only), tests, vite config
 bun run build                      # typecheck + Vite production build
 bun run rzero validate fixtures/scenarios/001-five-node-baseline.yaml
+bun run rzero run      fixtures/scenarios/001-five-node-baseline.json   # print the event stream
 ```

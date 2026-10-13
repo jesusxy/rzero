@@ -18,13 +18,15 @@ The app runs on the Vite development server, usually at
 bun run test        # domain core unit tests
 bun run build       # type-check app, core and tests, then build
 bun run rzero validate fixtures/scenarios/001-five-node-baseline.json
+bun run rzero run      fixtures/scenarios/001-five-node-baseline.json   # run the engine, print events
 ```
 
 ## Layout
 
 - `src/core/` — UI-independent domain core: native types, JSON Schemas,
-  JSON/restricted-YAML import, validation and scenario compilation. Import it
-  only through `src/core/index.ts`.
+  JSON/restricted-YAML import, validation, scenario compilation, the
+  deterministic propagation engine, and result analysis, one-change
+  comparison and the replay reducer. Import it only through `src/core/index.ts`.
 - `src/components/`, `src/App.tsx` — Solid UI shell (prototype).
 - `src/domain/`, `src/data/` — prototype UI mock types and data; illustrative
   only, see `docs/core-integration.md`.

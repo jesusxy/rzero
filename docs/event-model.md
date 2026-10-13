@@ -10,6 +10,8 @@ Every event includes `event_id`, `seq`, `type` and `hop`. Sequence numbers are c
 
 An optional export wrapper contains run ID and wall-clock creation time. Those wrapper values do not affect engine determinism. Events reference assets, links, capabilities, attempts and interventions by exact IDs.
 
+Implemented in milestone 2: `event_id` is `e` followed by the six-digit zero-padded `seq` (so `seq` 9 is `e000009`); attempt IDs are `a` followed by a six-digit 1-based counter in encounter order. `propagation_skipped` uses reason `TARGET_ALREADY_COMPROMISED`. A check's `expected`/`observed` are bounded strings: isolation uses `not_isolated`/`isolated`, platform lists the capability's platforms joined by `,` against the observed platform, service uses `enabled`/`disabled`/`unknown`/`absent`, vulnerability uses `present`/`absent`/`unknown`/`missing` (a missing fact reads `missing` and evaluates as unknown), and `CREDENTIAL_AUTHORIZED` reads `valid:<min-privilege>` against `<status>:<privilege>` of the witness grant (chosen by credential ID) or `none`. `intervention_ids` is attached to a check only when an intervention wrote the observed fact.
+
 ## Vocabulary
 
 | Type | Required payload | Interpretation |
@@ -69,3 +71,5 @@ Completion occurs only after all compromised sources have been processed. A comp
 The replay reducer changes only discovery and compromise state from their respective events. Attempt events populate an attempt ledger and temporary animation state. A blocked attempt cannot remove a compromise or set a permanent safe flag. The reducer must rebuild identical final asset state from a completed stream.
 
 Checkpoints may accelerate seeking but are derived caches. Export the source events and invalidate checkpoints when the event digest changes. Future contract changes require explicit versions rather than inference from missing fields.
+
+Implemented in milestone 3 (`src/core/replay/reducer.ts`). The reducer is a pure fold: `seekReplay(events, n)` is the state after the first `n` events, computed only from the events, so stepping and seeking always agree. The cursor is the count of applied events in `[0, events.length]`: cursor 0 is the pre-`run_started` state and `events.length` is final. `stepReplay`/`stepBackReplay` move one event (back by re-folding), and `replayFinalState(events)` rebuilds the engine's final discovery, compromise, parent and hop state. Compromise and discovery are append-only; a blocked or indeterminate attempt only updates the attempt ledger. V1 seeks by folding from the start; checkpoints remain a later optimization.

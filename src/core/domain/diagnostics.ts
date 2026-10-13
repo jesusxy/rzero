@@ -52,6 +52,9 @@ export type DiagnosticCode =
   | 'PROFILE_NOT_REVIEWED'
   | 'INTERVENTION_NO_MATCH'
   | 'CONFLICTING_INTERVENTIONS'
+  // Controlled comparison (analysis)
+  | 'COMPARISON_INCOMPATIBLE'
+  | 'COMPARISON_ABORTED_RUN'
   // Warnings (never block compilation)
   | 'INTERVENTION_NOOP'
   | 'VULNERABILITY_FACT_MISSING'

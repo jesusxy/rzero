@@ -593,3 +593,112 @@ describe('credential attribution — a blocked attempt keeps its evidence', () =
     expect(outcome('valid', 'user')).toBe('fail') // insufficient privilege
   })
 })
+
+describe('credential attribution — multiple failing candidates', () => {
+  // Source credentials for the same B/WinRM target; the profile requires admin.
+  const lab = (credentials: unknown[], credentialIds: string[], interventions: unknown[] = []): LabSpec => ({
+    assets: {
+      A: { credential_ids: credentialIds },
+      B: { services: [{ id: 'winrm', transport: 'tcp', port: 5985, status: 'enabled' }], vulnerabilities: [] },
+    },
+    links: [{ id: 'ab', source: 'A', target: 'B', service: 'winrm' }],
+    profile: winrmProfile(),
+    credentials,
+    interventions,
+  })
+  const grant = (privilege: string, status: string) => ({ target_id: 'B', service_id: 'winrm', privilege, status })
+  const credCheck = (result: RunResult) =>
+    resolvedEvents(result)[0]!.checks.find((c) => c.code === 'CREDENTIAL_AUTHORIZED')!
+
+  // cred-user sorts before cred-zadmin, so the first-matching fallback would pick the user grant.
+  const twoCreds = (adminStatus: string) =>
+    lab(
+      [
+        { id: 'cred-user', label: 'User', grants: [grant('user', 'valid')] },
+        { id: 'cred-zadmin', label: 'Admin', grants: [grant('admin', adminStatus)] },
+      ],
+      ['cred-user', 'cred-zadmin'],
+    )
+
+  test('before revocation the later-sorting admin credential authorizes', () => {
+    const result = runLab(twoCreds('valid'))
+    expect(compromised(result)).toEqual(['A', 'B'])
+    expect(credCheck(result)).toMatchObject({ status: 'pass', observed: 'valid:admin', entity_refs: ['cred-zadmin'] })
+  })
+
+  test('revoking the admin grant blocks and keeps the revoked credential and intervention', () => {
+    const result = runLab({
+      ...twoCreds('valid'),
+      interventions: [
+        { type: 'set_grant_status', id: 'revoke-admin', credential_id: 'cred-zadmin', target_id: 'B', service_id: 'winrm', status: 'invalid' },
+      ],
+    })
+    expect(compromised(result)).toEqual(['A'])
+    // Not valid:user from the earlier-sorting credential.
+    expect(credCheck(result)).toMatchObject({
+      status: 'fail',
+      observed: 'invalid:admin',
+      entity_refs: ['cred-zadmin'],
+      intervention_ids: ['revoke-admin'],
+    })
+  })
+
+  test('among several invalid admin grants the witness is deterministic by credential ID', () => {
+    const result = runLab(
+      lab(
+        [
+          { id: 'cred-b', label: 'B', grants: [grant('admin', 'invalid')] },
+          { id: 'cred-a', label: 'A', grants: [grant('admin', 'invalid')] },
+        ],
+        ['cred-b', 'cred-a'],
+      ),
+    )
+    expect(credCheck(result)).toMatchObject({ status: 'fail', observed: 'invalid:admin', entity_refs: ['cred-a'] })
+  })
+
+  test('with only underprivileged grants the failure still reports a matching grant, not "none"', () => {
+    const result = runLab(
+      lab(
+        [
+          { id: 'cred-1', label: '1', grants: [grant('user', 'valid')] },
+          { id: 'cred-2', label: '2', grants: [grant('user', 'valid')] },
+        ],
+        ['cred-1', 'cred-2'],
+      ),
+    )
+    expect(credCheck(result)).toMatchObject({ status: 'fail', observed: 'valid:user', entity_refs: ['cred-1'] })
+  })
+
+  test('an invalid admin grant is preferred over an underprivileged valid grant as the witness', () => {
+    // cred-mid (underprivileged valid) sorts before cred-zadmin (sufficient but invalid).
+    const result = runLab(
+      lab(
+        [
+          { id: 'cred-mid', label: 'M', grants: [grant('user', 'valid')] },
+          { id: 'cred-zadmin', label: 'Z', grants: [grant('admin', 'invalid')] },
+        ],
+        ['cred-mid', 'cred-zadmin'],
+      ),
+    )
+    expect(credCheck(result)).toMatchObject({ status: 'fail', observed: 'invalid:admin', entity_refs: ['cred-zadmin'] })
+  })
+
+  test('a still-valid alternative authorizes and is not blamed on the revocation', () => {
+    // cred-arevoked sorts first and is revoked; cred-bvalid still authorizes.
+    const result = runLab({
+      ...lab(
+        [
+          { id: 'cred-arevoked', label: 'A', grants: [grant('admin', 'valid')] },
+          { id: 'cred-bvalid', label: 'B', grants: [grant('admin', 'valid')] },
+        ],
+        ['cred-arevoked', 'cred-bvalid'],
+      ),
+      interventions: [
+        { type: 'set_grant_status', id: 'revoke-a', credential_id: 'cred-arevoked', target_id: 'B', service_id: 'winrm', status: 'invalid' },
+      ],
+    })
+    expect(compromised(result)).toEqual(['A', 'B'])
+    expect(credCheck(result)).toMatchObject({ status: 'pass', observed: 'valid:admin', entity_refs: ['cred-bvalid'] })
+    expect(credCheck(result).intervention_ids).toBeUndefined()
+  })
+})

@@ -20,8 +20,20 @@
 // cached checkpoint index lets a seek start from the nearest checkpoint at or
 // before the target. Every returned state is an independent frozen value, so an
 // earlier returned state never changes when replay advances.
+//
+// Ownership (input contract): the reducer owns an immutable view of the stream.
+// `runScenario` output is already deep-frozen and is used directly. A stream
+// that is not frozen — e.g. rebuilt from JSON or a structured clone across a
+// worker — is defensively deep-copied and frozen once per array (cached), and
+// every reducer function reads through that owned view. So later mutation of a
+// caller-owned array can neither change an already-returned snapshot (snapshots
+// hold references only into frozen data) nor desynchronize seeking from
+// stepping (both read the same owned view). The reducer never mutates the
+// caller's array, and the one-time copy is paid only for a non-frozen stream.
 
+import { cloneJson, type JsonValue } from '../domain/json'
 import type { Check, Outcome, SimulationEvent } from '../engine'
+import { deepFreeze } from '../scenario/freeze'
 
 export type AttemptStatus = 'pending' | Outcome
 
@@ -186,6 +198,31 @@ type CheckpointIndex = { readonly interval: number; readonly states: readonly Re
 
 const checkpointCache = new WeakMap<readonly SimulationEvent[], CheckpointIndex>()
 
+// Owned, immutable view of a non-frozen stream, cached by the caller's array.
+const ownedCache = new WeakMap<readonly SimulationEvent[], readonly SimulationEvent[]>()
+
+/**
+ * Returns an immutable view of the stream the reducer owns. A deep-frozen array
+ * (the engine's output) is used as-is; a non-frozen one is deep-copied and
+ * frozen once and cached, so the reducer observes a stable snapshot and never
+ * mutates the caller's data. All stream reads go through this.
+ */
+function own(events: readonly SimulationEvent[]): readonly SimulationEvent[] {
+  if (Object.isFrozen(events)) return events
+  const cached = ownedCache.get(events)
+  if (cached !== undefined) return cached
+  const owned = deepFreeze(
+    events.map((event) => cloneJson(event as unknown as JsonValue) as unknown as SimulationEvent),
+  )
+  ownedCache.set(events, owned)
+  return owned
+}
+
+/** Deep-freezes a single event, copying it first when it is not already frozen. */
+function ownEvent(event: SimulationEvent): SimulationEvent {
+  return Object.isFrozen(event) ? event : deepFreeze(cloneJson(event as unknown as JsonValue) as unknown as SimulationEvent)
+}
+
 function checkpointsFor(events: readonly SimulationEvent[]): CheckpointIndex {
   const cached = checkpointCache.get(events)
   if (cached !== undefined) return cached
@@ -217,28 +254,31 @@ export function initialReplayState(): ReplayState {
  */
 export function applyEvent(state: ReplayState, event: SimulationEvent): ReplayState {
   const working = toMutable(state)
-  applyMutable(working, event)
+  // Own the single event so a snapshot never aliases caller-owned mutable data.
+  applyMutable(working, ownEvent(event))
   return snapshot(working)
 }
 
 /** State after the first `cursor` events, clamped to [0, events.length]. */
 export function seekReplay(events: readonly SimulationEvent[], cursor: number): ReplayState {
-  const target = Math.max(0, Math.min(cursor, events.length))
-  const checkpoints = checkpointsFor(events)
+  const owned = own(events)
+  const target = Math.max(0, Math.min(cursor, owned.length))
+  const checkpoints = checkpointsFor(owned)
   const baseIndex = Math.min(Math.floor(target / checkpoints.interval), checkpoints.states.length - 1)
   const base = checkpoints.states[baseIndex]!
   if (base.cursor === target) return base
 
   const working = toMutable(base)
   for (let index = base.cursor; index < target; index += 1) {
-    applyMutable(working, events[index]!)
+    applyMutable(working, owned[index]!)
   }
   return snapshot(working)
 }
 
 /** Advances one event; a no-op at the end of the stream. */
 export function stepReplay(events: readonly SimulationEvent[], state: ReplayState): ReplayState {
-  return state.cursor < events.length ? applyEvent(state, events[state.cursor]!) : state
+  const owned = own(events)
+  return state.cursor < owned.length ? applyEvent(state, owned[state.cursor]!) : state
 }
 
 /** Retreats one event; a no-op at the start of the stream. Checkpoint-accelerated. */

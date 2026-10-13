@@ -149,7 +149,15 @@ function vulnerabilityCheck(
  * Considers only credentials available on the source and their exact grant to
  * (target, service). A valid, sufficiently privileged grant passes; failing
  * that, an unknown one is indeterminate; everything else — missing, invalid or
- * underprivileged — fails. The witness credential is chosen by ID order.
+ * underprivileged — fails.
+ *
+ * The witness credential is deterministic (lowest ID within its tier). On a
+ * failure its selection preserves the most relevant evidence: prefer a
+ * sufficiently privileged but invalid grant — the credential that would
+ * authorize but for its revoked/invalid status, which also carries the
+ * intervention that changed it — over a merely underprivileged match, and fall
+ * back to any matching grant so an invalid or underprivileged grant is still
+ * distinguished from no grant at all.
  */
 function credentialCheck(
   source: Asset,
@@ -161,9 +169,12 @@ function credentialCheck(
   type Witness = { credentialId: string; grant: Grant }
   let valid: Witness | undefined
   let unknown: Witness | undefined
-  // The first matching (target, service) grant by credential ID, whatever its
-  // status or privilege. It explains a failure — an invalid or underprivileged
-  // grant — and distinguishes that from no matching grant at all.
+  // A sufficiently privileged but invalid grant — the credential that would
+  // authorize but for its revoked/invalid status. It carries the most relevant
+  // failure evidence, including any intervention that invalidated it.
+  let revoked: Witness | undefined
+  // Any matching (target, service) grant, whatever its status or privilege.
+  // Distinguishes an underprivileged or invalid grant from no grant at all.
   let matched: Witness | undefined
 
   for (const credentialId of [...source.credential_ids].sort()) {
@@ -177,14 +188,17 @@ function credentialCheck(
       valid ??= { credentialId, grant }
     } else if (grant.status === 'unknown') {
       unknown ??= { credentialId, grant }
+    } else {
+      revoked ??= { credentialId, grant } // sufficiently privileged but invalid
     }
   }
 
   const status: CheckStatus = valid !== undefined ? 'pass' : unknown !== undefined ? 'unknown' : 'fail'
   // On pass/unknown the qualifying grant is the witness, so a revoked grant on
   // another credential never displaces a credential that still authorizes
-  // access. Only a genuine failure falls back to the matching grant.
-  const witness = valid ?? unknown ?? matched
+  // access. On a failure, prefer the revoked sufficiently-privileged grant over
+  // a merely underprivileged match, then any matching grant.
+  const witness = valid ?? unknown ?? revoked ?? matched
   const fieldRef =
     witness === undefined
       ? undefined

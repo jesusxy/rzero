@@ -303,3 +303,72 @@ describe('replay reducer — checkpointed seeking over a long stream (>1000 even
     expect(final).toEqual(foldTo(capped.events, capped.events.length))
   })
 })
+
+describe('replay reducer — ownership of copied (mutable) event streams', () => {
+  // JSON round-trip yields a fully mutable stream, like a worker/structured-clone
+  // or reload boundary. The engine's own output is deep-frozen; these exercise
+  // the non-frozen path.
+  const copiedFiveNode = (): SimulationEvent[] => JSON.parse(JSON.stringify(fiveNodeRun().events))
+
+  test('mutating an input check (and its nested arrays) after replay never changes a returned snapshot', () => {
+    const copied = copiedFiveNode()
+    const snapshot = replayFinalState(copied)
+    const resolved = copied.find(
+      (e): e is Extract<SimulationEvent, { type: 'propagation_resolved' }> =>
+        e.type === 'propagation_resolved' && e.checks.some((c) => c.entity_refs.length > 0),
+    )!
+    const attempt = Object.values(snapshot.attempts).find((a) => a.attempt_id === resolved.attempt_id)!
+    const fingerprint = JSON.stringify(attempt.checks)
+
+    // Tamper with the caller-owned input: a check field and a nested reference array.
+    ;(resolved.checks[0] as { observed: string }).observed = 'TAMPERED'
+    ;(resolved.checks[0]!.entity_refs as string[]).push('TAMPERED')
+    ;(resolved.checks as unknown as unknown[]).push({
+      code: 'NETWORK_ACCESS',
+      status: 'fail',
+      expected: 'x',
+      observed: 'y',
+      entity_refs: ['z'],
+    })
+
+    const after = Object.values(replayFinalState(copied).attempts).find((a) => a.attempt_id === resolved.attempt_id)!
+    expect(JSON.stringify(attempt.checks)).toBe(fingerprint) // earlier snapshot unchanged
+    expect(JSON.stringify(after.checks)).toBe(fingerprint) // reducer took ownership before the mutation
+  })
+
+  test('the reducer does not mutate the caller-owned array or its events', () => {
+    const copied = copiedFiveNode()
+    expect(Object.isFrozen(copied)).toBe(false)
+    replayFinalState(copied)
+    seekReplay(copied, 3)
+    expect(Object.isFrozen(copied)).toBe(false) // still the caller's mutable array
+    expect(Object.isFrozen(copied[0])).toBe(false)
+  })
+
+  test('copied events still reproduce the engine final state', () => {
+    const run = fiveNodeRun()
+    const copied: SimulationEvent[] = JSON.parse(JSON.stringify(run.events))
+    expect([...replayFinalState(copied).compromised].sort()).toEqual([...run.state.compromised].sort())
+  })
+
+  test('on a >1000-event copied stream, mutating an early event after caching never desyncs seek from stepping', () => {
+    const copied: SimulationEvent[] = JSON.parse(JSON.stringify(denseRun().events))
+    expect(copied.length).toBeGreaterThan(1000)
+
+    // First touch builds the owned view and the checkpoint index (incl. cursor 1000).
+    seekReplay(copied, copied.length)
+
+    // Mutate an early (<900) resolved event, which the cursor-1000 checkpoint already folded.
+    const earlyIndex = copied.findIndex(
+      (e, i) => i < 900 && e.type === 'propagation_resolved' && e.outcome === 'blocked',
+    )
+    expect(earlyIndex).toBeGreaterThan(-1)
+    ;(copied[earlyIndex] as { outcome: string }).outcome = 'succeeded'
+
+    // Seeking (checkpoint-based) and fresh stepping both read the owned view, so they agree
+    // with each other and with the pre-mutation result.
+    for (const n of [earlyIndex + 1, 1000, 1200, copied.length]) {
+      expect(seekReplay(copied, n)).toEqual(foldTo(copied, n))
+    }
+  })
+})

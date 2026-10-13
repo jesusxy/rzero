@@ -553,3 +553,48 @@ button.secondary {
 @media (max-width: 760px) {
   .workspace { grid-template-columns: 1fr; }
 }
+
+/* ---- Checkpoint 1 refinement: consolidated layout + explanations ---- */
+
+/* Center column = map above, playback bar below */
+.map-column { display: flex; flex-direction: column; min-height: 0; }
+.map-stage { flex: 1; }
+
+.playback-bar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--paper-deep);
+  flex-wrap: wrap;
+}
+.playback-controls { display: flex; gap: 8px; }
+.playback-position { font: 12px var(--mono); color: var(--ink-strong); }
+.playback-counts { display: flex; gap: 16px; margin: 0 0 0 auto; flex-wrap: wrap; }
+.playback-counts div { display: flex; gap: 6px; align-items: baseline; font: 11px var(--mono); }
+.playback-counts dt { color: var(--ink-muted); text-transform: uppercase; }
+.playback-counts dd { margin: 0; color: var(--ink-strong); }
+
+/* Topbar metrics: starting host only (counts moved to the playback bar) */
+.status-metrics dd .muted { font-size: 10px; text-transform: uppercase; }
+
+/* Inventory tags */
+.inventory-tags { display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-seed { background: var(--seed-mark); }
+
+/* Inspector explanation lead */
+.explanation { padding-left: 12px; border-left: 3px solid var(--line-strong); margin-bottom: 8px; }
+.explanation-headline { margin: 0; font: 14px var(--mono); font-weight: 600; color: var(--ink-strong); }
+.explanation-detail { margin: 6px 0 0; font-size: 12px; color: var(--ink-muted); }
+.tone-succeeded { border-left-color: var(--state-compromised); }
+.tone-blocked { border-left-color: var(--state-blocked); }
+.tone-indeterminate { border-left-color: var(--state-unknown); }
+.tone-pending { border-left-color: var(--state-discovered); }
+.tone-neutral { border-left-color: var(--line-strong); }
+
+.host-badges { display: flex; gap: 8px; margin: 6px 0 0; flex-wrap: wrap; }
+.badge-seed { color: var(--seed-mark); }
+.inspector-actions { padding: 12px 16px; border-top: 1px solid var(--line); }
+.checks-heading { margin-top: 12px; }

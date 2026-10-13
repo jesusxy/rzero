@@ -1,9 +1,11 @@
-// Checkpoint-1 simulation store. Holds three independent concerns:
+// Checkpoint-1 simulation store. Three independent concerns:
 //   1. the run recording — the compiled scenario and RunResult (immutable);
 //   2. the playback position — a cursor, from which ReplayState is derived;
 //   3. viewer state — the pinned selection.
-// The engine runs once, synchronously, in start(). Everything the UI shows is
-// derived from the recorded events via the replay reducer, never recomputed.
+// Preparing and running are separate: the scenario is compiled once at creation
+// so the network is visible and inspectable before Start; start() executes the
+// engine on that prepared scenario and initializes replay. Everything the UI
+// shows is derived from the recorded events via the replay reducer.
 
 import { createMemo, createSignal } from 'solid-js'
 import {
@@ -19,18 +21,24 @@ import {
 } from '../core'
 import { BUILTIN_SCENARIO_FILE, BUILTIN_SCENARIO_TEXT } from './scenario'
 import { computeLayout, type GridPosition } from './layout'
-import type { Selection } from './view'
+import { attemptIdForLink, type Selection } from './view'
 
-export type Phase = 'idle' | 'ready' | 'error'
+export type Phase = 'prepared' | 'ready' | 'error'
 
 const EMPTY_LAYOUT: ReadonlyMap<string, GridPosition> = new Map()
 
 export function createSimulationStore() {
-  const [phase, setPhase] = createSignal<Phase>('idle')
-  const [diagnostics, setDiagnostics] = createSignal<readonly Diagnostic[]>([])
-  const [compiled, setCompiled] = createSignal<CompiledScenario | null>(null)
+  // Prepare (compile) once at creation, without running the engine.
+  const prepared = importScenario(BUILTIN_SCENARIO_TEXT, { fileName: BUILTIN_SCENARIO_FILE })
+  const preparedCompiled = prepared.ok ? prepared.value : null
+
+  const [phase, setPhase] = createSignal<Phase>(prepared.ok ? 'prepared' : 'error')
+  const [diagnostics] = createSignal<readonly Diagnostic[]>(prepared.diagnostics)
+  const [compiled] = createSignal<CompiledScenario | null>(preparedCompiled)
+  const [layout] = createSignal<ReadonlyMap<string, GridPosition>>(
+    preparedCompiled === null ? EMPTY_LAYOUT : computeLayout(preparedCompiled.effective.network.assets),
+  )
   const [run, setRun] = createSignal<RunResult | null>(null)
-  const [layout, setLayout] = createSignal<ReadonlyMap<string, GridPosition>>(EMPTY_LAYOUT)
   const [cursor, setCursor] = createSignal(0)
   const [selection, setSelection] = createSignal<Selection>(null)
 
@@ -47,22 +55,12 @@ export function createSimulationStore() {
   })
 
   function start(): void {
-    const result = importScenario(BUILTIN_SCENARIO_TEXT, { fileName: BUILTIN_SCENARIO_FILE })
-    setDiagnostics(result.diagnostics)
-    if (!result.ok) {
-      setPhase('error')
-      setCompiled(null)
-      setRun(null)
-      setLayout(EMPTY_LAYOUT)
-      return
-    }
-    const compiledScenario = result.value
-    setCompiled(compiledScenario)
-    setRun(runScenario(compiledScenario))
-    setLayout(computeLayout(compiledScenario.effective.network.assets))
+    const scenario = compiled()
+    if (scenario === null) return
+    setRun(runScenario(scenario))
     setCursor(0) // initialize replay at the beginning of the recording
-    setSelection(null)
     setPhase('ready')
+    // Selection is viewer state and is preserved deliberately across runs.
   }
 
   function stepForward(): void {
@@ -82,8 +80,16 @@ export function createSimulationStore() {
   function selectAttempt(id: string): void {
     setSelection({ type: 'attempt', id })
   }
-  function clearSelection(): void {
+  /** Clears the pin so the inspector follows the current step again. */
+  function followCurrentStep(): void {
     setSelection(null)
+  }
+  /** Selects the attempt recorded on a link, if the run has one (any cursor). */
+  function selectLink(linkId: string): void {
+    const current = run()
+    if (current === null) return
+    const attemptId = attemptIdForLink(current, linkId)
+    if (attemptId !== null) setSelection({ type: 'attempt', id: attemptId })
   }
 
   return {
@@ -97,6 +103,7 @@ export function createSimulationStore() {
     currentEvent,
     replay,
     selection,
+    hasRun: () => run() !== null,
     atStart: () => cursor() === 0,
     atEnd: () => cursor() >= totalEvents(),
     start,
@@ -105,7 +112,8 @@ export function createSimulationStore() {
     restart,
     selectAsset,
     selectAttempt,
-    clearSelection,
+    selectLink,
+    followCurrentStep,
   }
 }
 

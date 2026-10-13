@@ -225,7 +225,7 @@ function HostPanel(props: { store: SimulationStore; assetId: string }) {
       {(host) => (
         <section class="inspector-section" aria-label="Selected host">
           <p class="eyebrow">Host</p>
-          <h3>{host().label} <span class="muted">{host().id}</span></h3>
+          <h3>{displayName(store.compiled(), props.assetId)} <span class="muted">{host().id}</span></h3>
           <div class="host-badges">
             <span class={`state-badge state-${state()}`}>{state()}</span>
             <Show when={isSeed()}>
@@ -233,6 +233,8 @@ function HostPanel(props: { store: SimulationStore; assetId: string }) {
             </Show>
           </div>
           <dl class="facts">
+            <dt>Label</dt><dd>{host().label}</dd>
+            <dt>Internal ID</dt><dd>{host().id}</dd>
             <dt>Kind</dt><dd>{host().kind}</dd>
             <dt>Platform</dt><dd>{host().platform}</dd>
             <dt>Segment</dt><dd>{host().segment_id}</dd>

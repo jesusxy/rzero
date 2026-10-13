@@ -167,6 +167,8 @@ button.secondary {
   min-height: 0;
   overflow: hidden;
   background: var(--paper);
+  display: flex;
+  flex-direction: column;
 }
 
 .map-toolbar {
@@ -186,18 +188,16 @@ button.secondary {
 
 .iso-grid-line {
   fill: none;
-  stroke: rgba(24, 22, 17, 0.32);
-  stroke-width: 0.55;
+  stroke: var(--grid);
+  stroke-width: 0.9;
   vector-effect: non-scaling-stroke;
 }
 
 .network-map {
-  position: absolute;
-  left: 50%;
-  top: 49%;
-  width: min(920px, 92%);
-  aspect-ratio: 1.48;
-  transform: translate(-50%, -50%);
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
 }
 
 .network-scene {
@@ -223,8 +223,17 @@ button.secondary {
 }
 
 .block-hatch-line {
-  stroke: rgba(24, 22, 17, 0.28);
-  stroke-width: 0.35;
+  stroke: var(--line-strong);
+  stroke-width: 0.3;
+}
+
+/* Pan surface — fills the viewBox so a drag anywhere on open canvas pans. */
+.pan-surface {
+  fill: var(--paper);
+  cursor: grab;
+}
+.pan-surface:active {
+  cursor: grabbing;
 }
 
 .asset-block {
@@ -516,6 +525,7 @@ button.secondary {
 .edge-head { fill: currentColor; stroke: none; }
 .edge-stop { stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .edge-badge { fill: currentColor; font: 2.6px var(--mono); text-anchor: middle; font-weight: 700; }
+.edge-chevron { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .edge-allow { color: var(--ink-muted); }
 .edge-deny { color: var(--state-blocked); }
 .edge-unknown { color: var(--state-unknown); }
@@ -540,10 +550,39 @@ button.secondary {
 .asset-compromised .asset-face-top { fill: var(--state-compromised-soft); }
 .asset-selected .asset-face,
 .asset-block:focus-visible .asset-face { stroke-width: 1.5; }
-.asset-seed-tag { fill: var(--seed-mark); font: 1.2px var(--mono); font-weight: 700; text-anchor: middle; text-transform: uppercase; pointer-events: none; }
-.asset-state-tag { fill: var(--ink-muted); font: 1.15px var(--mono); text-anchor: middle; text-transform: uppercase; pointer-events: none; }
-.asset-discovered .asset-state-tag { fill: var(--state-discovered); }
-.asset-compromised .asset-state-tag { fill: var(--state-compromised); }
+
+/* Silhouette decoration — presentational only, never implies facts. */
+.asset-rack { fill: none; stroke: var(--line-strong); stroke-width: 0.5; vector-effect: non-scaling-stroke; }
+.asset-vent { fill: var(--node-shadow); stroke: var(--ink-muted); stroke-width: 0.4; vector-effect: non-scaling-stroke; }
+
+/* Seed (configured start host) mark — a small pennant above the roof. */
+.asset-seed-mark { fill: var(--seed-mark); stroke: none; }
+
+/* State marks on the roof: filled dot = compromised, ring = discovered. */
+.asset-mark { stroke-width: 0.5; vector-effect: non-scaling-stroke; }
+.mark-compromised { fill: var(--state-compromised); stroke: var(--paper); }
+.mark-discovered { fill: var(--paper); stroke: var(--state-discovered); stroke-width: 0.9; }
+
+/* Map legend — color meanings live here, not under each building. */
+.map-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--paper-deep);
+  font: 11px var(--mono);
+  color: var(--ink-muted);
+  flex-wrap: wrap;
+}
+.legend-item { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.swatch { width: 11px; height: 11px; display: inline-block; border: 1px solid var(--line-strong); }
+.sw-compromised { background: var(--state-compromised); border-color: var(--state-compromised); }
+.sw-discovered { background: var(--paper); border: 2px solid var(--state-discovered); }
+.sw-seed { background: var(--seed-mark); border-color: var(--seed-mark); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.sw-blocked { background: repeating-linear-gradient(90deg, var(--state-blocked) 0 3px, transparent 3px 5px); border: 0; }
+.legend-sep { flex: 1; }
+.legend-hint { color: var(--ink-muted); }
 
 /* Responsive: right inspector collapses like the old story panel */
 @media (max-width: 1080px) {

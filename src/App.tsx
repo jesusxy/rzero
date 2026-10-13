@@ -7,6 +7,7 @@ import {
   attemptsByLink,
   buildStaticAssets,
   buildStaticLinks,
+  isoWaypoints,
   linkViewState,
   playbackCounts,
 } from './app/view'
@@ -22,10 +23,16 @@ function App() {
     const compiled = store.compiled()
     return compiled === null ? [] : buildStaticAssets(compiled, store.layout())
   })
+  const occupied = createMemo(() => {
+    const set = new Set<string>()
+    for (const position of store.layout().values()) set.add(`${position.x},${position.y}`)
+    return set
+  })
   const staticLinks = createMemo(() => {
     const compiled = store.compiled()
-    // Straight routes in this commit; presentation waypoints arrive in commit 2.
-    return compiled === null ? [] : buildStaticLinks(compiled, store.layout(), () => [])
+    if (compiled === null) return []
+    const occ = occupied()
+    return buildStaticLinks(compiled, store.layout(), (_link, from, to) => isoWaypoints(from, to, occ))
   })
 
   const counts = createMemo(() => {

@@ -8,10 +8,11 @@ import { sha256Hex } from '../../src/core/scenario/sha256'
 import { errorsOf } from './helpers'
 
 describe('UTF-8 codec', () => {
-  test('matches the platform TextDecoder (fatal) on valid and invalid byte sequences', () => {
-    const reference = new TextDecoder('utf-8', { fatal: true })
-    const samples: number[][] = [
-      [0x41, 0xc3, 0xa9, 0xe2, 0x82, 0xac, 0xf0, 0x9f, 0x98, 0x80],
+  test('decodes valid UTF-8 and strictly rejects malformed sequences', () => {
+    const valid = new Uint8Array([0x41, 0xc3, 0xa9, 0xe2, 0x82, 0xac, 0xf0, 0x9f, 0x98, 0x80])
+    const decoded = decodeUtf8(valid)
+    expect(decoded.ok && decoded.text).toBe('Aé€😀')
+    const malformed = [
       [0xc0, 0xaf], // overlong '/'
       [0xe0, 0x80, 0xaf], // overlong
       [0xed, 0xa0, 0x80], // UTF-16 surrogate
@@ -19,26 +20,8 @@ describe('UTF-8 codec', () => {
       [0xe2, 0x82], // truncated
       [0xff],
     ]
-    let seed = 7
-    for (let n = 0; n < 500; n += 1) {
-      const length = 1 + (n % 6)
-      const bytes: number[] = []
-      for (let i = 0; i < length; i += 1) {
-        seed = (seed * 1103515245 + 12345) >>> 0
-        bytes.push(seed >>> 24)
-      }
-      samples.push(bytes)
-    }
-    for (const sample of samples) {
-      const bytes = new Uint8Array(sample)
-      let expected: string | null
-      try {
-        expected = reference.decode(bytes)
-      } catch {
-        expected = null
-      }
-      const actual = decodeUtf8(bytes)
-      expect(actual.ok ? actual.text : null).toBe(expected)
+    for (const bytes of malformed) {
+      expect(decodeUtf8(new Uint8Array(bytes)).ok).toBe(false)
     }
   })
 

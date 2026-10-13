@@ -64,7 +64,7 @@ This is a proposed implementation choice, not a previously selected user require
 
 Proposed module boundaries: `domain/`, `io/`, `engine/`, `analysis/`, `replay/`, `ui/`, `fixtures/` and `docs/`. Import direction runs from adapters/UI toward core contracts, never from engine toward UI.
 
-In this repository (Solid + Vite + Bun), the core lives under `src/core/` because `src/domain/` already holds the UI prototype's mock types. Its modules are `domain/`, `io/`, `schema/`, `validation/` and `scenario/`, with `engine/`, `analysis/` and `replay/` to follow. Fixtures are in `fixtures/` and tests in `tests/`. `src/core/index.ts` is the only entry point other code may import. `tsconfig.core.json` checks the core against ECMAScript alone, and `tests/core/boundary.test.ts` rejects imports from outside the core. See `core-integration.md`.
+In this repository (Solid + Vite + Bun), the core lives under `src/core/` because `src/domain/` already holds the UI prototype's mock types. Its modules are `domain/`, `io/`, `schema/`, `validation/`, `scenario/`, `engine/`, `analysis/` and `replay/`. Fixtures are in `fixtures/` and tests in `tests/`. `src/core/index.ts` is the only entry point other code may import. `tsconfig.core.json` checks the core against ECMAScript plus only the host-neutral `TextEncoder`/`TextDecoder` primitives (see `core-integration.md` for why SHA-256 and the schema validator stay custom), and `tests/core/boundary.test.ts` rejects imports from outside the core. See `core-integration.md`.
 
 ## Scale and reproducibility
 

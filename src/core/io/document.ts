@@ -57,9 +57,7 @@ export function parseDocument(
   } else {
     const decoded = decodeUtf8(input)
     if (!decoded.ok) {
-      return fail([
-        error('INVALID_UTF8', [], `Document is not valid UTF-8 (byte offset ${decoded.offset}).`),
-      ])
+      return fail([error('INVALID_UTF8', [], 'Document is not valid UTF-8.')])
     }
     text = decoded.text
   }

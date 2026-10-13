@@ -4,7 +4,9 @@ Status: milestones 1 (native contracts), 2 (deterministic engine) and 3 (analysi
 
 ## The integration boundary
 
-The frontend, the CLI (`scripts/rzero.ts`), a future simulation worker and the tests all import from **`src/core/index.ts`** and nothing deeper. The core is plain ECMAScript with one runtime dependency (`yaml`). It has no DOM, Node, Bun or Solid imports: `tsconfig.core.json` type-checks it against `ES2023` alone, and `tests/core/boundary.test.ts` enforces both rules.
+The frontend, the CLI (`scripts/rzero.ts`), a future simulation worker and the tests all import from **`src/core/index.ts`** and nothing deeper. The core is plain ECMAScript with one runtime dependency (`yaml`). It has no DOM, Node, Bun or Solid imports: `tsconfig.core.json` type-checks it against `ES2023` plus one sanctioned addition, and `tests/core/boundary.test.ts` enforces both rules.
+
+**Platform restrictions.** The core may use exactly one set of globals beyond ECMAScript: the host-neutral WHATWG Encoding primitives `TextEncoder`/`TextDecoder`, which are synchronous and present in browsers, Web Workers, Node and Bun. They are declared on their own in `types/platform-encoding.d.ts`, included only by the core project (the app gets them from its DOM lib), so the core's type environment still excludes the DOM, Node and Bun libraries. UTF-8 handling (`io/utf8.ts`) uses these. Two other primitives stay deliberately custom: the SHA-256 for the canonical digest (`scenario/sha256.ts`) — because the only universal platform digest, WebCrypto, is asynchronous and the digest is computed on the synchronous compile path; and the JSON Schema validator (`schema/validator.ts`) — because it is the single source of the stable `DiagnosticCode`/path error contract and a general validator (Ajv) would add a browser dependency that defaults to `eval`-based codegen and an error-mapping layer. Ajv is kept as a dev-only oracle in the schema tests.
 
 | Call | Use |
 | --- | --- |

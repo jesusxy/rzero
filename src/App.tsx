@@ -1,17 +1,59 @@
-import { For } from 'solid-js'
+import { createMemo, For, Show } from 'solid-js'
 import { MapStage } from './components/MapStage'
-import { placeholderProfiles } from './data/malwareProfiles/placeholders'
-import { startupTopology } from './data/topologies/startup'
+import { Inspector } from './components/Inspector'
+import { createSimulationStore } from './app/store'
+import {
+  assetState,
+  attemptsByLink,
+  buildStaticAssets,
+  buildStaticLinks,
+  displayName,
+  isoWaypoints,
+  linkViewState,
+} from './app/view'
+import { BUILTIN_SCENARIO_LABEL, BUILTIN_SCENARIO_NOTE } from './app/scenario'
 import './App.css'
 
-const topologyOptions = [startupTopology]
-const activeTopology = startupTopology
-
-function segmentAssetCount(segmentId: string) {
-  return activeTopology.nodes.filter((node) => node.segment === segmentId).length
-}
-
 function App() {
+  const store = createSimulationStore()
+
+  // Static scene — depends only on the compiled scenario (set once), so it keeps
+  // a stable identity and the rendered elements/focus survive playback updates.
+  const staticAssets = createMemo(() => {
+    const compiled = store.compiled()
+    return compiled === null ? [] : buildStaticAssets(compiled, store.layout())
+  })
+  const occupied = createMemo(() => {
+    const set = new Set<string>()
+    for (const position of store.layout().values()) set.add(`${position.x},${position.y}`)
+    return set
+  })
+  const staticLinks = createMemo(() => {
+    const compiled = store.compiled()
+    if (compiled === null) return []
+    const occ = occupied()
+    return buildStaticLinks(compiled, store.layout(), (_link, from, to) => isoWaypoints(from, to, occ))
+  })
+
+  const linkLedger = createMemo(() => attemptsByLink(store.replay()))
+  const startName = () => {
+    const seed = store.compiled()?.effective.initial_asset_id
+    return seed === undefined ? '—' : displayName(store.compiled(), seed)
+  }
+
+  // Reactive accessors read through to the current replay/selection.
+  const stateOf = (id: string) => assetState(store.replay(), id)
+  const assetSelected = (id: string) => {
+    const s = store.selection()
+    return s?.type === 'asset' && s.id === id
+  }
+  const linkStateOf = (id: string) => linkViewState(linkLedger().get(id))
+  const linkSelected = (id: string) => {
+    const s = store.selection()
+    if (s?.type !== 'attempt') return false
+    return store.replay().attempts[s.id]?.link_id === id
+  }
+
   return (
     <main class="app-shell">
       <header class="topbar" aria-label="Scenario controls">
@@ -20,88 +62,107 @@ function App() {
           <h1>rzero</h1>
         </section>
 
-        <section class="scenario-controls" aria-label="Simulation controls">
-          <label>
-            Topology
-            <select aria-label="Topology preset">
-              <For each={topologyOptions}>{(topology) => (
-                <option value={topology.id}>{topology.label}</option>
-              )}</For>
-            </select>
-          </label>
+        <section class="status-strip" aria-label="Scenario">
+          <div class="status-scenario">
+            <span class="status-name">{BUILTIN_SCENARIO_LABEL}</span>
+            <span class="status-note">{BUILTIN_SCENARIO_NOTE}</span>
+          </div>
+          <dl class="status-metrics">
+            <div>
+              <dt>Starting host</dt>
+              <dd>{startName()} <span class="muted">configured</span></dd>
+            </div>
+            <div><dt>Hosts</dt><dd>{staticAssets().length}</dd></div>
+          </dl>
+        </section>
 
-          <label>
-            Profile
-            <select aria-label="Malware behavior profile">
-              <For each={placeholderProfiles}>{(profile) => (
-                <option value={profile.id}>{profile.label}</option>
-              )}</For>
-            </select>
-          </label>
-
-          <button type="button">Start</button>
-          <button type="button" class="secondary">
-            Reset
-          </button>
+        <section class="playback-nav" aria-label="Playback controls">
+          <span class="nav-step" aria-live="polite">
+            <Show when={store.hasRun()} fallback={<span class="muted">Not started</span>}>
+              Step {store.cursor()} / {store.totalEvents()}
+            </Show>
+          </span>
+          <div class="nav-buttons">
+            <button
+              type="button"
+              class="secondary"
+              onClick={() => store.restart()}
+              disabled={store.phase() !== 'ready' || store.atStart()}
+              aria-label="Restart replay at the beginning"
+            >⟲</button>
+            <button
+              type="button"
+              class="secondary"
+              onClick={() => store.stepBackward()}
+              disabled={store.phase() !== 'ready' || store.atStart()}
+              aria-label="Previous step"
+            >◀</button>
+            <button
+              type="button"
+              class="secondary"
+              onClick={() => store.stepForward()}
+              disabled={store.phase() !== 'ready' || store.atEnd()}
+              aria-label="Next step"
+            >▶</button>
+            <button type="button" class="nav-run" onClick={() => store.start()}>
+              {store.phase() === 'ready' ? 'Re-run' : 'Start'}
+            </button>
+          </div>
         </section>
       </header>
 
-      <section class="workspace">
-        <aside class="left-rail" aria-label="Topology zones">
-          <div class="panel-heading">
-            <p class="eyebrow">Topology</p>
-            <h2>{activeTopology.label}</h2>
-          </div>
+      <Show when={store.phase() === 'error'}>
+        <div class="diagnostics-banner" role="alert">
+          <strong>Scenario cannot run</strong>
+          <ul>
+            <For each={store.diagnostics().filter((d) => d.severity === 'error')}>{(diagnostic) => (
+              <li><code>{diagnostic.code}</code> at <code>{diagnostic.path || '(root)'}</code> — {diagnostic.message}</li>
+            )}</For>
+          </ul>
+        </div>
+      </Show>
 
-          <nav class="zone-list" aria-label="Network segments">
-            <For each={activeTopology.segments}>{(zone) => (
-              <button type="button" class="zone-card">
-                <span>{zone.label}</span>
-                <small>
-                  {segmentAssetCount(zone.id)} assets / {zone.status}
-                </small>
+      <section class="workspace">
+        <aside class="left-rail" aria-label="Host inventory">
+          <div class="panel-heading">
+            <p class="eyebrow">Inventory</p>
+            <h2>Hosts</h2>
+          </div>
+          <nav class="inventory-list" aria-label="Hosts">
+            <For each={staticAssets()}>{(asset) => (
+              <button
+                type="button"
+                class="inventory-item"
+                classList={{ 'inventory-selected': assetSelected(asset.id) }}
+                aria-pressed={assetSelected(asset.id)}
+                onClick={() => store.selectAsset(asset.id)}
+              >
+                <span class="inventory-id">{asset.shortName}</span>
+                <span class="inventory-label">{asset.label}</span>
+                <span class="inventory-tags">
+                  <Show when={asset.isSeed}><span class="dot dot-seed" title="configured starting host" /></Show>
+                  <span class={`state-badge state-${stateOf(asset.id)}`}>{stateOf(asset.id)}</span>
+                </span>
               </button>
             )}</For>
           </nav>
         </aside>
 
-        <MapStage topology={activeTopology} />
+        <div class="map-column">
+          <MapStage
+            assets={staticAssets()}
+            links={staticLinks()}
+            stateOf={stateOf}
+            assetSelected={assetSelected}
+            linkStateOf={linkStateOf}
+            linkSelected={linkSelected}
+            hasRun={store.hasRun()}
+            onSelectAsset={store.selectAsset}
+            onSelectLink={store.selectLink}
+          />
+        </div>
 
-        <aside class="story-panel" aria-label="Story mode">
-          <div class="mode-tabs" role="tablist" aria-label="View mode">
-            <button type="button" class="active" role="tab" aria-selected="true">
-              Story
-            </button>
-            <button type="button" role="tab" aria-selected="false">
-              Command
-            </button>
-          </div>
-
-          <section class="story-content">
-            <p class="eyebrow">Current Phase</p>
-            <h2>Set Initial Access</h2>
-            <p>
-              Pick the first compromised asset. rzero will use the selected
-              malware behavior profile and topology to explain what happens
-              next.
-            </p>
-
-            <div class="callout">
-              <strong>Scenario question</strong>
-              <span>
-                Starting from this asset, what can the malware reach, and which
-                controls reduce the blast radius?
-              </span>
-            </div>
-
-            <ol class="story-steps">
-              <li class="current">Choose a topology</li>
-              <li>Choose a behavior profile</li>
-              <li>Set Initial Access on a node</li>
-              <li>Watch the kill chain unfold</li>
-            </ol>
-          </section>
-        </aside>
+        <Inspector store={store} />
       </section>
     </main>
   )

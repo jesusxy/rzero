@@ -16,7 +16,7 @@
 }
 
 .brand-block,
-.scenario-controls {
+.playback-nav {
   display: flex;
   align-items: center;
 }
@@ -54,28 +54,26 @@
   text-transform: uppercase;
 }
 
-.scenario-controls {
-  align-items: end;
-  gap: 10px;
+/* Top-right playback navigation (Start/Re-run, Restart, Prev, Next + step). */
+.playback-nav {
+  gap: 14px;
   padding: 12px 16px;
   margin-left: auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  border-left: 1px solid var(--line);
 }
+.nav-step {
+  font: 12px var(--mono);
+  color: var(--ink-strong);
+  white-space: nowrap;
+  min-width: 92px;
+  text-align: right;
+}
+.nav-buttons { display: flex; gap: 6px; }
+.nav-buttons button { min-width: 38px; padding: 0 10px; }
+.nav-run { min-width: 74px; }
 
-.scenario-controls label {
-  display: grid;
-  gap: 4px;
-  min-width: 172px;
-  color: var(--ink-muted);
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-}
-
-.scenario-controls button {
-  min-width: 78px;
-}
+button:disabled { opacity: 0.38; cursor: not-allowed; }
+button:disabled:hover { background: transparent; color: var(--ink-strong); }
 
 select,
 button {
@@ -109,7 +107,8 @@ button.secondary {
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 360px;
+  /* Map-dominant: left inventory ~13%, center map fills, right panel ~20%. */
+  grid-template-columns: clamp(168px, 13vw, 224px) minmax(0, 1fr) clamp(300px, 22vw, 400px);
 }
 
 .left-rail,
@@ -167,6 +166,8 @@ button.secondary {
   min-height: 0;
   overflow: hidden;
   background: var(--paper);
+  display: flex;
+  flex-direction: column;
 }
 
 .map-toolbar {
@@ -186,18 +187,16 @@ button.secondary {
 
 .iso-grid-line {
   fill: none;
-  stroke: rgba(24, 22, 17, 0.32);
-  stroke-width: 0.55;
+  stroke: var(--grid);
+  stroke-width: 0.9;
   vector-effect: non-scaling-stroke;
 }
 
 .network-map {
-  position: absolute;
-  left: 50%;
-  top: 49%;
-  width: min(920px, 92%);
-  aspect-ratio: 1.48;
-  transform: translate(-50%, -50%);
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
 }
 
 .network-scene {
@@ -223,8 +222,17 @@ button.secondary {
 }
 
 .block-hatch-line {
-  stroke: rgba(24, 22, 17, 0.28);
-  stroke-width: 0.35;
+  stroke: var(--line-strong);
+  stroke-width: 0.3;
+}
+
+/* Pan surface — fills the viewBox so a drag anywhere on open canvas pans. */
+.pan-surface {
+  fill: var(--paper);
+  cursor: grab;
+}
+.pan-surface:active {
+  cursor: grabbing;
 }
 
 .asset-block {
@@ -358,18 +366,22 @@ button.secondary {
     border-bottom: 1px solid var(--line);
   }
 
-  .scenario-controls {
+  .playback-nav {
+    margin-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
     justify-content: flex-start;
   }
 
   .workspace {
-    grid-template-columns: 210px minmax(0, 1fr);
+    grid-template-columns: minmax(180px, 24%) minmax(0, 1fr);
   }
 
-  .story-panel {
+  .inspector {
     grid-column: 1 / -1;
     border-left: 0;
     border-top: 1px solid var(--line);
+    max-height: 420px;
   }
 }
 
@@ -384,11 +396,306 @@ button.secondary {
   }
 
   .map-stage {
-    min-height: 520px;
-  }
-
-  .scenario-controls label,
-  .scenario-controls button {
-    flex: 1 1 150px;
+    min-height: 460px;
   }
 }
+
+/* Desktop: pin the dashboard to the viewport. The app-shell becomes a fixed
+   viewport-height grid (not just a minimum), so the 1fr workspace track is
+   bounded; the workspace's single row is minmax(0, 1fr) so columns can shrink
+   below their content. Expanding inspector content then scrolls inside
+   .inspector-body instead of growing the page and shifting the map. Below this
+   width the layout stacks and the page scrolls normally (see queries above). */
+@media (min-width: 1081px) {
+  .app-shell {
+    height: 100svh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace {
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+/* ---- Checkpoint 1: live scenario, playback and inspection ---- */
+
+.muted { color: var(--ink-muted); }
+
+/* Topbar status strip */
+.status-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 60px;
+  padding: 10px 16px;
+  flex-wrap: wrap;
+}
+.status-scenario { display: grid; gap: 2px; min-width: 0; }
+.status-name { font: 13px var(--mono); color: var(--ink-strong); }
+.status-note { font-size: 11px; color: var(--ink-muted); }
+.status-metrics { display: flex; gap: 18px; margin: 0; }
+.status-metrics div { display: grid; }
+.status-metrics dt { font: 10px var(--mono); text-transform: uppercase; color: var(--ink-muted); }
+.status-metrics dd { margin: 0; font: 15px var(--mono); color: var(--ink-strong); }
+
+/* Diagnostics */
+.diagnostics-banner {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--state-compromised-soft);
+  color: var(--ink-strong);
+  font-size: 13px;
+}
+.diagnostics-banner ul { margin: 6px 0 0; padding-left: 18px; }
+.diagnostics-banner code { font-family: var(--mono); }
+
+/* Left rail: playback + inventory */
+.playback-body { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.event-desc { margin: 0 0 10px; font: 12px var(--mono); color: var(--ink-strong); }
+.count-row { display: grid; gap: 6px; margin: 0; }
+.count-row div { display: flex; justify-content: space-between; gap: 12px; font: 11px var(--mono); }
+.count-row dt { color: var(--ink-muted); text-transform: uppercase; }
+.count-row dd { margin: 0; color: var(--ink-strong); }
+
+.inventory-heading { border-top: 0; }
+.inventory-list { display: grid; gap: 6px; padding: 12px; }
+.inventory-empty { padding: 0 4px; }
+.inventory-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+  text-transform: none;
+  padding: 8px 10px;
+}
+.inventory-item:hover { background: var(--state-discovered-soft); color: var(--ink-strong); }
+.inventory-id { font: 12px var(--mono); font-weight: 600; color: var(--ink-strong); }
+.inventory-label { font-size: 12px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inventory-selected { outline: 2px solid var(--ink-strong); outline-offset: -2px; }
+
+/* State badges (HTML) */
+.state-badge {
+  display: inline-block;
+  font: 10px var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+}
+.state-modeled { color: var(--ink-muted); }
+.state-discovered { color: var(--state-discovered); }
+.state-compromised { color: var(--state-compromised); }
+.attempt-pending { color: var(--state-discovered); }
+.attempt-succeeded { color: var(--state-compromised); }
+.attempt-blocked { color: var(--state-blocked); }
+.attempt-indeterminate { color: var(--state-unknown); }
+
+/* Right inspector — fixed heading + counts, scrolling body below. */
+.inspector {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-deep);
+  border-left: 1px solid var(--line);
+}
+.inspector-heading { flex: none; }
+.inspector-body { flex: 1; min-height: 0; overflow: auto; }
+.inspector-empty, .inspector-hint { padding: 16px; color: var(--ink-muted); font-size: 13px; }
+.inspector-section { padding: 14px 16px; border-top: 1px solid var(--line); }
+.inspector-section h3 { margin: 4px 0 8px; font: 14px var(--mono); color: var(--ink-strong); }
+.inspector-section h3 .muted { font-weight: 400; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 10px 0 0; }
+.facts dt { font: 10px var(--mono); text-transform: uppercase; color: var(--ink-muted); }
+.facts dd { margin: 0; font: 12px var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+.path-block { margin-top: 12px; }
+.path-list { margin: 6px 0 0; padding-left: 16px; font: 12px var(--mono); display: grid; gap: 4px; }
+.path-via { color: var(--ink-muted); margin-left: 6px; }
+
+.checks { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.check {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  font: 11px var(--mono);
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+}
+.check-pass { border-left-color: var(--seed-mark); }
+.check-fail { border-left-color: var(--state-compromised); }
+.check-unknown { border-left-color: var(--state-unknown); }
+.check-symbol { font-weight: 700; }
+.check-pass .check-symbol { color: var(--seed-mark); }
+.check-fail .check-symbol { color: var(--state-compromised); }
+.check-unknown .check-symbol { color: var(--state-unknown); }
+.check-code { font-weight: 600; color: var(--ink-strong); }
+.check-status { color: var(--ink-muted); }
+.check-facts { flex-basis: 100%; color: var(--ink-muted); }
+.check-intervention { flex-basis: 100%; color: var(--state-unknown); }
+
+/* Map edges (directed routes) */
+.network-edges { pointer-events: auto; }
+.network-edge { color: var(--ink-muted); cursor: pointer; outline: none; }
+.edge-line { fill: none; stroke: currentColor; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.edge-head { fill: currentColor; stroke: none; }
+.edge-stop { stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.edge-badge { fill: currentColor; font: 2.6px var(--mono); text-anchor: middle; font-weight: 700; }
+.edge-chevron { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.edge-allow { color: var(--ink-muted); }
+.edge-deny { color: var(--state-blocked); }
+.edge-unknown { color: var(--state-unknown); }
+.edge-deny .edge-line,
+.edge-unknown .edge-line,
+.edge-state-blocked .edge-line,
+.edge-state-indeterminate .edge-line { stroke-dasharray: 2 1.4; }
+/* Replay state overrides access color (declared after, equal specificity) */
+.edge-state-pending { color: var(--state-discovered); }
+.edge-state-succeeded { color: var(--state-compromised); }
+.edge-state-blocked { color: var(--state-blocked); }
+.edge-state-indeterminate { color: var(--state-unknown); }
+.edge-state-succeeded .edge-line { stroke-width: 2.2; }
+.network-edge:hover .edge-line,
+.network-edge:focus-visible .edge-line,
+.edge-selected .edge-line { stroke-width: 2.8; }
+
+/* Map node states — subtle face tint + outline only. State text lives in the
+   inventory and inspector, so color is never the sole signal. */
+.asset-discovered .asset-face { stroke: var(--state-discovered); stroke-width: 0.9; }
+.asset-discovered .asset-face-top { fill: var(--state-discovered-soft); }
+.asset-compromised .asset-face { stroke: var(--state-compromised); stroke-width: 0.9; }
+.asset-compromised .asset-face-top { fill: var(--state-compromised-soft); }
+
+/* Selection / keyboard focus — a distinct ink outline, independent of the
+   state colors above (declared last so it wins the shared .asset-face stroke). */
+.asset-selected .asset-face,
+.asset-block:focus-visible .asset-face { stroke: var(--ink-strong); stroke-width: 1.8; }
+
+/* Silhouette decoration — presentational only, never implies facts. */
+.asset-rack { fill: none; stroke: var(--line-strong); stroke-width: 0.5; vector-effect: non-scaling-stroke; }
+
+/* Map legend — color meanings live here, not under each building. */
+.map-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--paper-deep);
+  font: 11px var(--mono);
+  color: var(--ink-muted);
+  flex-wrap: wrap;
+}
+.legend-item { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.swatch { width: 11px; height: 11px; display: inline-block; border: 1px solid var(--line-strong); }
+.sw-compromised { background: var(--state-compromised-soft); border-color: var(--state-compromised); }
+.sw-discovered { background: var(--state-discovered-soft); border-color: var(--state-discovered); }
+.sw-selected { background: var(--paper); border: 2px solid var(--ink-strong); }
+.sw-blocked { background: repeating-linear-gradient(90deg, var(--state-blocked) 0 3px, transparent 3px 5px); border: 0; }
+.legend-sep { flex: 1; }
+.legend-hint { color: var(--ink-muted); }
+
+/* ---- Checkpoint 2 refinement: map-dominant layout + activity history ---- */
+
+/* Center column = map filling the available height. */
+.map-column { display: flex; flex-direction: column; min-height: 0; }
+.map-stage { flex: 1; }
+
+/* Topbar metrics: starting host only (counts moved to the right panel). */
+.status-metrics dd .muted { font-size: 10px; text-transform: uppercase; }
+
+/* Inventory tags */
+.inventory-tags { display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-seed { background: var(--seed-mark); }
+
+/* Inspector explanation lead */
+.explanation { padding-left: 12px; border-left: 3px solid var(--line-strong); margin-bottom: 8px; }
+.explanation-headline { margin: 0; font: 14px var(--mono); font-weight: 600; color: var(--ink-strong); }
+.explanation-detail { margin: 6px 0 0; font-size: 12px; color: var(--ink-muted); }
+.tone-succeeded { border-left-color: var(--state-compromised); }
+.tone-blocked { border-left-color: var(--state-blocked); }
+.tone-indeterminate { border-left-color: var(--state-unknown); }
+.tone-pending { border-left-color: var(--state-discovered); }
+.tone-neutral { border-left-color: var(--line-strong); }
+
+.host-badges { display: flex; gap: 8px; margin: 6px 0 0; flex-wrap: wrap; }
+.badge-seed { color: var(--seed-mark); }
+.inspector-actions { padding: 12px 16px; border-top: 1px solid var(--line); }
+.back-actions { border-top: 0; border-bottom: 1px solid var(--line); }
+.checks-heading { margin-top: 12px; }
+.evidence-line { margin: 10px 0 0; font: 11px var(--mono); color: var(--ink-muted); }
+.evidence-line .eyebrow { display: inline; margin: 0 6px 0 0; }
+
+/* Counts summary — compromised / discovered / attempts at the current step. */
+.counts-summary {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  margin: 0;
+  background: var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.counts-summary div { background: var(--paper-deep); padding: 8px 12px; display: grid; gap: 2px; }
+.counts-summary dt { font: 9px var(--mono); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
+.counts-summary dd { margin: 0; font: 16px var(--mono); color: var(--ink-strong); }
+.counts-of { color: var(--ink-muted); font-size: 12px; }
+.counts-attempts { display: flex; gap: 8px; font-size: 12px; }
+
+/* Activity history — a growing chronological list of reached events. */
+.history-status {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 14px;
+  background: var(--paper-deep);
+  border-bottom: 1px solid var(--line);
+  font: 11px var(--mono);
+}
+.history-following { color: var(--ink-muted); }
+.history-inspecting { color: var(--ink-strong); }
+.compact-btn { min-height: 26px; padding: 0 8px; font-size: 10px; }
+
+.history-list { list-style: none; margin: 0; padding: 0; }
+.history-row { border-bottom: 1px solid var(--line); }
+.history-row-head {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 8px 12px;
+  text-align: left;
+  text-transform: none;
+  background: transparent;
+  border: 0;
+}
+.history-row-head:hover { background: var(--state-discovered-soft); color: var(--ink-strong); }
+.history-step { font: 10px var(--mono); color: var(--ink-muted); min-width: 16px; }
+.history-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
+.history-dot.tone-succeeded { background: var(--state-compromised); }
+.history-dot.tone-blocked { background: var(--state-blocked); }
+.history-dot.tone-indeterminate { background: var(--state-unknown); }
+.history-dot.tone-pending { background: var(--state-discovered); }
+.history-headline { font: 12px var(--mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-now { font: 9px var(--mono); text-transform: uppercase; letter-spacing: 0.04em; color: var(--state-discovered); }
+
+/* Current step: a left accent bar + emphasized headline. */
+.row-current > .history-row-head { box-shadow: inset 3px 0 0 var(--state-discovered); }
+.row-current > .history-row-head .history-headline { color: var(--ink-strong); font-weight: 600; }
+/* Focused (expanded) entry, and an inspected older entry distinct from current. */
+.row-focused { background: var(--paper); }
+.row-inspecting { outline: 2px solid var(--ink-strong); outline-offset: -2px; }
+
+.history-detail { padding: 4px 9px 12px 9px; border-top: 1px dashed var(--line); }
+.history-detail .facts { margin-top: 8px; }
+.history-actions { margin-top: 10px; }

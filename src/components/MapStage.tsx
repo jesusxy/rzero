@@ -84,13 +84,6 @@ function decorations(asset: StaticMapAsset, faces: ReturnType<typeof blockFaces>
   }
   return []
 }
-// A small roof vent for workstations (a centred diamond on the top face).
-function roofVent(asset: StaticMapAsset, faces: ReturnType<typeof blockFaces>): string | null {
-  if (asset.kind !== 'workstation') return null
-  const c = faces.roof
-  const s = 0.62
-  return points([lerp(faces.r.top, c, s), lerp(faces.r.right, c, s), lerp(faces.r.bottom, c, s), lerp(faces.r.left, c, s)])
-}
 
 function edgeGeometry(link: StaticMapLink) {
   const pathGrid = [link.from, ...link.waypoints, link.to]
@@ -160,7 +153,8 @@ function sceneBounds(assets: readonly StaticMapAsset[]): ViewBox {
     }
   }
   if (!Number.isFinite(minX)) return { x: 0, y: 0, w: 100, h: 72 }
-  const pad = 7
+  // Breathing room around the whole network on the initial fit.
+  const pad = 11
   return { x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 }
 }
 
@@ -293,7 +287,6 @@ export function MapStage(props: MapStageProps) {
             <For each={ordered()}>{(asset) => {
               const faces = blockFaces(asset)
               const racks = decorations(asset, faces)
-              const vent = roofVent(asset, faces)
               const state = () => props.stateOf(asset.id)
               return (
                 <g
@@ -317,26 +310,6 @@ export function MapStage(props: MapStageProps) {
                   <polygon class="asset-face asset-face-right" points={faces.right} />
                   <polygon class="asset-face asset-face-top" points={faces.top} />
                   <For each={racks}>{(line) => <polyline class="asset-rack" points={line} />}</For>
-                  <Show when={vent}>{(points) => <polygon class="asset-vent" points={points()} />}</Show>
-
-                  {/* Seed marker (configured start host) — distinct from compromise. */}
-                  <Show when={asset.isSeed}>
-                    <polygon
-                      class="asset-seed-mark"
-                      points={points([
-                        { x: faces.roof.x, y: faces.roof.y - 3.4 },
-                        { x: faces.roof.x - 1.1, y: faces.roof.y - 1.8 },
-                        { x: faces.roof.x + 1.1, y: faces.roof.y - 1.8 },
-                      ])}
-                    />
-                  </Show>
-                  {/* State mark: filled = compromised, ring = discovered. */}
-                  <Show when={state() === 'compromised'}>
-                    <circle class="asset-mark mark-compromised" cx={faces.roof.x} cy={faces.roof.y - 0.1} r="0.9" />
-                  </Show>
-                  <Show when={state() === 'discovered'}>
-                    <circle class="asset-mark mark-discovered" cx={faces.roof.x} cy={faces.roof.y - 0.1} r="0.9" />
-                  </Show>
 
                   <text class="asset-block-label" x={faces.roof.x} y={faces.roof.y + 2}>{asset.shortName}</text>
                 </g>
@@ -349,10 +322,10 @@ export function MapStage(props: MapStageProps) {
       <footer class="map-legend" aria-label="Legend">
         <span class="legend-item"><span class="swatch sw-compromised" />compromised</span>
         <span class="legend-item"><span class="swatch sw-discovered" />discovered</span>
-        <span class="legend-item"><span class="swatch sw-seed" />start host</span>
+        <span class="legend-item"><span class="swatch sw-selected" />selected</span>
         <span class="legend-item"><span class="swatch sw-blocked" />blocked route</span>
         <span class="legend-sep" />
-        <span class="legend-hint">Drag to pan · click or focus + Enter to inspect</span>
+        <span class="legend-hint">Drag to pan · +/− or ⤢ to zoom · click or focus + Enter to inspect</span>
       </footer>
     </section>
   )

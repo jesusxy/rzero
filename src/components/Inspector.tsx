@@ -1,5 +1,5 @@
-import { For, Show, Switch, Match } from 'solid-js'
-import { firstCompromisePath, type AttemptView, type Check } from '../core'
+import { createEffect, createMemo, For, Show, Switch, Match } from 'solid-js'
+import { firstCompromisePath, type Check, type SimulationEvent } from '../core'
 import type { SimulationStore } from '../app/store'
 import {
   assetById,
@@ -7,67 +7,226 @@ import {
   attemptStaticInfo,
   capabilityById,
   displayName,
-  eventAttemptId,
   explainAttempt,
   explainEvent,
   linkById,
+  playbackCounts,
   type EventExplanation,
 } from '../app/view'
 
 const checkSymbol: Record<Check['status'], string> = { pass: '✓', fail: '✗', unknown: '?' }
+
+/** True for the two attempt-bearing event types (they carry link/capability). */
+function isAttemptEvent(
+  event: SimulationEvent,
+): event is Extract<SimulationEvent, { type: 'propagation_attempted' | 'propagation_resolved' }> {
+  return event.type === 'propagation_attempted' || event.type === 'propagation_resolved'
+}
 
 export function Inspector(props: { store: SimulationStore }) {
   const store = props.store
   const pinnedAssetId = () => (store.selection()?.type === 'asset' ? (store.selection() as { id: string }).id : null)
   const pinnedAttemptId = () => (store.selection()?.type === 'attempt' ? (store.selection() as { id: string }).id : null)
 
+  const counts = createMemo(() => {
+    const compiled = store.compiled()
+    return compiled === null ? null : playbackCounts(compiled, store.replay())
+  })
+
+  // Follow newly reached events while following playback (no explicit
+  // selection); never pull the user away when they are inspecting.
+  let bodyEl: HTMLDivElement | undefined
+  createEffect(() => {
+    store.cursor()
+    if (store.selection() === null && store.hasRun() && bodyEl !== undefined) {
+      bodyEl.scrollTop = bodyEl.scrollHeight
+    }
+  })
+
   return (
     <aside class="inspector" aria-label="Inspector">
-      <div class="panel-heading">
+      <div class="panel-heading inspector-heading">
         <p class="eyebrow">Inspector</p>
-        <h2>Explanation</h2>
+        <h2>Activity</h2>
       </div>
 
-      <Switch fallback={<p class="inspector-empty">Preparing scenario…</p>}>
-        <Match when={store.phase() === 'error'}>
-          <p class="inspector-empty">The scenario could not be prepared — see the banner above.</p>
-        </Match>
+      <CountsSummary counts={counts()} />
 
-        {/* Pinned host — available before and after Start */}
-        <Match when={pinnedAssetId()}>
-          {(id) => (
-            <>
-              <HostPanel store={store} assetId={id()} />
-              <FollowButton store={store} />
-            </>
-          )}
-        </Match>
+      <div class="inspector-body" ref={(el) => (bodyEl = el)}>
+        <Switch fallback={<p class="inspector-empty">Preparing scenario…</p>}>
+          <Match when={store.phase() === 'error'}>
+            <p class="inspector-empty">The scenario could not be prepared — see the banner above.</p>
+          </Match>
 
-        {/* Pinned attempt — only meaningful after a run */}
-        <Match when={pinnedAttemptId()}>
-          {(id) => (
-            <>
-              <PinnedAttemptPanel store={store} attemptId={id()} />
-              <FollowButton store={store} />
-            </>
-          )}
-        </Match>
+          {/* Host inspection — available before and after Start */}
+          <Match when={pinnedAssetId()}>
+            {(id) => (
+              <>
+                <BackToHistory store={store} />
+                <HostPanel store={store} assetId={id()} />
+              </>
+            )}
+          </Match>
 
-        {/* No pin, before Start */}
-        <Match when={store.phase() === 'prepared'}>
-          <p class="inspector-hint">
-            Select a host to inspect its facts. Press <strong>Start</strong> to run the scenario and step through events.
-          </p>
-        </Match>
+          {/* Attempt inspection (from a map route) */}
+          <Match when={pinnedAttemptId()}>
+            {(id) => (
+              <>
+                <BackToHistory store={store} />
+                <AttemptPanel store={store} attemptId={id()} />
+              </>
+            )}
+          </Match>
 
-        {/* No pin, after Start — follow the current step */}
-        <Match when={store.phase() === 'ready'}>
-          <CurrentEventPanel store={store} />
-        </Match>
-      </Switch>
+          {/* Default: the growing playback history */}
+          <Match when={true}>
+            <ActivityHistory store={store} />
+          </Match>
+        </Switch>
+      </div>
     </aside>
   )
 }
+
+function CountsSummary(props: { counts: ReturnType<typeof playbackCounts> | null }) {
+  const c = () => props.counts
+  return (
+    <dl class="counts-summary" aria-label="Current position totals">
+      <div>
+        <dt>Compromised</dt>
+        <dd>{c()?.compromised ?? 0}<span class="counts-of"> / {c()?.total ?? 0}</span></dd>
+      </div>
+      <div>
+        <dt>Discovered</dt>
+        <dd>{c()?.discovered ?? 0}</dd>
+      </div>
+      <div>
+        <dt>Attempts</dt>
+        <dd class="counts-attempts">
+          <span title="succeeded">✓ {c()?.succeeded ?? 0}</span>
+          <span title="blocked">✗ {c()?.blocked ?? 0}</span>
+          <span title="indeterminate">? {c()?.indeterminate ?? 0}</span>
+        </dd>
+      </div>
+    </dl>
+  )
+}
+
+// --- Activity history -------------------------------------------------------
+
+function ActivityHistory(props: { store: SimulationStore }) {
+  const store = props.store
+
+  // Events reached at the current replay position (events[0 .. cursor-1]).
+  const reached = createMemo<readonly SimulationEvent[]>(() => {
+    const run = store.run()
+    return run === null ? [] : run.events.slice(0, store.cursor())
+  })
+  // The focused (expanded) event index: an explicitly inspected event, else the
+  // current step. Following = no explicit event selection.
+  const focusedIndex = () => {
+    const sel = store.selection()
+    return sel?.type === 'event' ? sel.index : store.cursor() - 1
+  }
+  const inspectingOlder = () => {
+    const sel = store.selection()
+    return sel?.type === 'event' && sel.index !== store.cursor() - 1
+  }
+
+  return (
+    <div class="history">
+      <Show when={store.hasRun()} fallback={
+        <p class="inspector-hint">
+          The network is prepared. Press <strong>Start</strong> to run the scenario and build the activity history.
+        </p>
+      }>
+        <Show when={reached().length > 0} fallback={
+          <p class="inspector-hint">At the start of the recording. Step forward to begin.</p>
+        }>
+          <div class="history-status" aria-live="polite">
+            <Show
+              when={inspectingOlder()}
+              fallback={<span class="history-following">Following current step · {store.cursor()} / {store.totalEvents()}</span>}
+            >
+              <span class="history-inspecting">Inspecting step {focusedIndex() + 1} of {store.cursor()}</span>
+              <button type="button" class="secondary compact-btn" onClick={() => store.followCurrentStep()}>
+                Follow current step
+              </button>
+            </Show>
+          </div>
+
+          <ol class="history-list">
+            <For each={reached()}>{(event, index) => (
+              <HistoryRow
+                store={store}
+                event={event}
+                index={index()}
+                focused={focusedIndex() === index()}
+                isCurrent={store.cursor() - 1 === index()}
+              />
+            )}</For>
+          </ol>
+        </Show>
+      </Show>
+    </div>
+  )
+}
+
+function HistoryRow(props: {
+  store: SimulationStore
+  event: SimulationEvent
+  index: number
+  focused: boolean
+  isCurrent: boolean
+}) {
+  const explanation = () => explainEvent(props.event, props.store.compiled())
+  return (
+    <li
+      class="history-row"
+      classList={{ 'row-current': props.isCurrent, 'row-focused': props.focused, 'row-inspecting': props.focused && !props.isCurrent }}
+    >
+      <button
+        type="button"
+        class="history-row-head"
+        aria-expanded={props.focused}
+        onClick={() => props.store.selectEvent(props.index)}
+      >
+        <span class="history-step">{props.index + 1}</span>
+        <span class={`history-dot tone-${explanation().tone}`} aria-hidden="true" />
+        <span class="history-headline">{explanation().headline}</span>
+        <Show when={props.isCurrent}><span class="history-now">current</span></Show>
+      </button>
+
+      {/* Expanded detail is mounted only for the focused row. */}
+      <Show when={props.focused}>
+        <div class="history-detail">
+          <Show when={explanation().detail}>
+            <p class="explanation-detail">{explanation().detail}</p>
+          </Show>
+          <Show when={isAttemptEvent(props.event) ? props.event : null}>
+            {(e) => (
+              <>
+                <AttemptFacts store={props.store} link_id={e().link_id} capability_id={e().capability_id} />
+                <Show when={e().type === 'propagation_resolved' ? (e() as Extract<SimulationEvent, { type: 'propagation_resolved' }>) : null}>
+                  {(resolved) => <ChecksList checks={resolved().checks} evidenceIds={resolved().evidence_ids} />}
+                </Show>
+              </>
+            )}
+          </Show>
+          <div class="history-actions">
+            <Show when={!props.isCurrent}>
+              <button type="button" class="secondary compact-btn" onClick={() => props.store.jumpToEvent(props.index)}>
+                Jump to this step
+              </button>
+            </Show>
+          </div>
+        </div>
+      </Show>
+    </li>
+  )
+}
+
+// --- Shared pieces ----------------------------------------------------------
 
 function Headline(props: { explanation: EventExplanation }) {
   return (
@@ -80,51 +239,28 @@ function Headline(props: { explanation: EventExplanation }) {
   )
 }
 
-function FollowButton(props: { store: SimulationStore }) {
+function BackToHistory(props: { store: SimulationStore }) {
   return (
-    <div class="inspector-actions">
+    <div class="inspector-actions back-actions">
       <button type="button" class="secondary" onClick={() => props.store.followCurrentStep()}>
-        {props.store.hasRun() ? 'Follow current step' : 'Clear selection'}
+        ← Activity history
       </button>
     </div>
   )
 }
 
-function CurrentEventPanel(props: { store: SimulationStore }) {
-  const store = props.store
-  const event = () => store.currentEvent()
-  return (
-    <section class="inspector-section" aria-label="Current event">
-      <p class="eyebrow">Step {store.cursor()} / {store.totalEvents()}</p>
-      <Show
-        when={event()}
-        fallback={<p class="inspector-hint">At the start of the recording. Step forward to begin.</p>}
-      >
-        {(current) => (
-          <>
-            <Headline explanation={explainEvent(current(), store.compiled())} />
-            <Show when={eventAttemptId(current())}>
-              {(attemptId) => <AttemptDetail store={store} attemptId={attemptId()} />}
-            </Show>
-          </>
-        )}
-      </Show>
-    </section>
-  )
-}
-
-function PinnedAttemptPanel(props: { store: SimulationStore; attemptId: string }) {
+function AttemptPanel(props: { store: SimulationStore; attemptId: string }) {
   const store = props.store
   const run = () => store.run()
   const info = () => {
     const current = run()
     return current === null ? null : attemptStaticInfo(current, props.attemptId)
   }
-  const ledger = (): AttemptView | undefined => store.replay().attempts[props.attemptId]
+  const ledger = () => store.replay().attempts[props.attemptId]
 
   return (
-    <section class="inspector-section" aria-label="Pinned attempt">
-      <p class="eyebrow">Pinned attempt</p>
+    <section class="inspector-section" aria-label="Inspected attempt">
+      <p class="eyebrow">Route attempt</p>
       <Show when={ledger()} fallback={
         <Show when={info()} fallback={<p class="inspector-hint">Attempt not found in this run.</p>}>
           {(stat) => (
@@ -145,26 +281,11 @@ function PinnedAttemptPanel(props: { store: SimulationStore; attemptId: string }
           <>
             <Headline explanation={explainAttempt(attempt(), store.compiled())} />
             <AttemptFacts store={store} link_id={attempt().link_id} capability_id={attempt().capability_id} />
-            <Checks attempt={attempt()} />
+            <ChecksList checks={attempt().checks} />
           </>
         )}
       </Show>
     </section>
-  )
-}
-
-/** Attempt detail shown inline under the current-event explanation. */
-function AttemptDetail(props: { store: SimulationStore; attemptId: string }) {
-  const attempt = (): AttemptView | undefined => props.store.replay().attempts[props.attemptId]
-  return (
-    <Show when={attempt()}>
-      {(a) => (
-        <>
-          <AttemptFacts store={props.store} link_id={a().link_id} capability_id={a().capability_id} />
-          <Checks attempt={a()} />
-        </>
-      )}
-    </Show>
   )
 }
 
@@ -187,15 +308,12 @@ function AttemptFacts(props: { store: SimulationStore; link_id: string; capabili
   )
 }
 
-function Checks(props: { attempt: AttemptView }) {
+function ChecksList(props: { checks: readonly Check[]; evidenceIds?: readonly string[] }) {
   return (
-    <Show
-      when={props.attempt.status !== 'pending'}
-      fallback={<p class="inspector-hint">Attempt pending — step forward to resolve it.</p>}
-    >
+    <Show when={props.checks.length > 0} fallback={<p class="inspector-hint">No requirement checks recorded for this step.</p>}>
       <p class="eyebrow checks-heading">Requirement checks</p>
       <ul class="checks">
-        <For each={props.attempt.checks}>{(check) => (
+        <For each={props.checks}>{(check) => (
           <li class={`check check-${check.status}`}>
             <span class="check-symbol" aria-hidden="true">{checkSymbol[check.status]}</span>
             <span class="check-code">{check.code}</span>
@@ -207,6 +325,9 @@ function Checks(props: { attempt: AttemptView }) {
           </li>
         )}</For>
       </ul>
+      <Show when={props.evidenceIds && props.evidenceIds.length > 0}>
+        <p class="evidence-line"><span class="eyebrow">Evidence</span> {props.evidenceIds!.join(', ')}</p>
+      </Show>
     </Show>
   )
 }

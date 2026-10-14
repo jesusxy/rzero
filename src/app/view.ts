@@ -28,6 +28,8 @@ export type LinkViewState = 'none' | 'pending' | 'succeeded' | 'blocked' | 'inde
 export type Selection =
   | { readonly type: 'asset'; readonly id: string }
   | { readonly type: 'attempt'; readonly id: string }
+  /** A specific history event being inspected (0-based event index). */
+  | { readonly type: 'event'; readonly index: number }
   | null
 
 /** Stable per-asset facts for the map/inventory (independent of playback). */

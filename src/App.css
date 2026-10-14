@@ -16,7 +16,7 @@
 }
 
 .brand-block,
-.scenario-controls {
+.playback-nav {
   display: flex;
   align-items: center;
 }
@@ -54,28 +54,26 @@
   text-transform: uppercase;
 }
 
-.scenario-controls {
-  align-items: end;
-  gap: 10px;
+/* Top-right playback navigation (Start/Re-run, Restart, Prev, Next + step). */
+.playback-nav {
+  gap: 14px;
   padding: 12px 16px;
   margin-left: auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  border-left: 1px solid var(--line);
 }
+.nav-step {
+  font: 12px var(--mono);
+  color: var(--ink-strong);
+  white-space: nowrap;
+  min-width: 92px;
+  text-align: right;
+}
+.nav-buttons { display: flex; gap: 6px; }
+.nav-buttons button { min-width: 38px; padding: 0 10px; }
+.nav-run { min-width: 74px; }
 
-.scenario-controls label {
-  display: grid;
-  gap: 4px;
-  min-width: 172px;
-  color: var(--ink-muted);
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-}
-
-.scenario-controls button {
-  min-width: 78px;
-}
+button:disabled { opacity: 0.38; cursor: not-allowed; }
+button:disabled:hover { background: transparent; color: var(--ink-strong); }
 
 select,
 button {
@@ -109,7 +107,8 @@ button.secondary {
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 360px;
+  /* Map-dominant: left inventory ~13%, center map fills, right panel ~20%. */
+  grid-template-columns: clamp(168px, 13vw, 224px) minmax(0, 1fr) clamp(300px, 22vw, 400px);
 }
 
 .left-rail,
@@ -367,18 +366,22 @@ button.secondary {
     border-bottom: 1px solid var(--line);
   }
 
-  .scenario-controls {
+  .playback-nav {
+    margin-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
     justify-content: flex-start;
   }
 
   .workspace {
-    grid-template-columns: 210px minmax(0, 1fr);
+    grid-template-columns: minmax(180px, 24%) minmax(0, 1fr);
   }
 
-  .story-panel {
+  .inspector {
     grid-column: 1 / -1;
     border-left: 0;
     border-top: 1px solid var(--line);
+    max-height: 420px;
   }
 }
 
@@ -393,12 +396,7 @@ button.secondary {
   }
 
   .map-stage {
-    min-height: 520px;
-  }
-
-  .scenario-controls label,
-  .scenario-controls button {
-    flex: 1 1 150px;
+    min-height: 460px;
   }
 }
 
@@ -477,13 +475,16 @@ button.secondary {
 .attempt-blocked { color: var(--state-blocked); }
 .attempt-indeterminate { color: var(--state-unknown); }
 
-/* Right inspector */
+/* Right inspector — fixed heading + counts, scrolling body below. */
 .inspector {
   min-height: 0;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
   background: var(--paper-deep);
   border-left: 1px solid var(--line);
 }
+.inspector-heading { flex: none; }
+.inspector-body { flex: 1; min-height: 0; overflow: auto; }
 .inspector-empty, .inspector-hint { padding: 16px; color: var(--ink-muted); font-size: 13px; }
 .inspector-section { padding: 14px 16px; border-top: 1px solid var(--line); }
 .inspector-section h3 { margin: 4px 0 8px; font: 14px var(--mono); color: var(--ink-strong); }
@@ -543,25 +544,20 @@ button.secondary {
 .network-edge:focus-visible .edge-line,
 .edge-selected .edge-line { stroke-width: 2.8; }
 
-/* Map node states */
-.asset-discovered .asset-face { stroke-width: 1.1; }
+/* Map node states — subtle face tint + outline only. State text lives in the
+   inventory and inspector, so color is never the sole signal. */
+.asset-discovered .asset-face { stroke: var(--state-discovered); stroke-width: 0.9; }
 .asset-discovered .asset-face-top { fill: var(--state-discovered-soft); }
-.asset-compromised .asset-face { stroke: var(--state-compromised); }
+.asset-compromised .asset-face { stroke: var(--state-compromised); stroke-width: 0.9; }
 .asset-compromised .asset-face-top { fill: var(--state-compromised-soft); }
+
+/* Selection / keyboard focus — a distinct ink outline, independent of the
+   state colors above (declared last so it wins the shared .asset-face stroke). */
 .asset-selected .asset-face,
-.asset-block:focus-visible .asset-face { stroke-width: 1.5; }
+.asset-block:focus-visible .asset-face { stroke: var(--ink-strong); stroke-width: 1.8; }
 
 /* Silhouette decoration — presentational only, never implies facts. */
 .asset-rack { fill: none; stroke: var(--line-strong); stroke-width: 0.5; vector-effect: non-scaling-stroke; }
-.asset-vent { fill: var(--node-shadow); stroke: var(--ink-muted); stroke-width: 0.4; vector-effect: non-scaling-stroke; }
-
-/* Seed (configured start host) mark — a small pennant above the roof. */
-.asset-seed-mark { fill: var(--seed-mark); stroke: none; }
-
-/* State marks on the roof: filled dot = compromised, ring = discovered. */
-.asset-mark { stroke-width: 0.5; vector-effect: non-scaling-stroke; }
-.mark-compromised { fill: var(--state-compromised); stroke: var(--paper); }
-.mark-discovered { fill: var(--paper); stroke: var(--state-discovered); stroke-width: 0.9; }
 
 /* Map legend — color meanings live here, not under each building. */
 .map-legend {
@@ -577,45 +573,20 @@ button.secondary {
 }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
 .swatch { width: 11px; height: 11px; display: inline-block; border: 1px solid var(--line-strong); }
-.sw-compromised { background: var(--state-compromised); border-color: var(--state-compromised); }
-.sw-discovered { background: var(--paper); border: 2px solid var(--state-discovered); }
-.sw-seed { background: var(--seed-mark); border-color: var(--seed-mark); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.sw-compromised { background: var(--state-compromised-soft); border-color: var(--state-compromised); }
+.sw-discovered { background: var(--state-discovered-soft); border-color: var(--state-discovered); }
+.sw-selected { background: var(--paper); border: 2px solid var(--ink-strong); }
 .sw-blocked { background: repeating-linear-gradient(90deg, var(--state-blocked) 0 3px, transparent 3px 5px); border: 0; }
 .legend-sep { flex: 1; }
 .legend-hint { color: var(--ink-muted); }
 
-/* Responsive: right inspector collapses like the old story panel */
-@media (max-width: 1080px) {
-  .workspace { grid-template-columns: 210px minmax(0, 1fr); }
-  .inspector { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); }
-}
-@media (max-width: 760px) {
-  .workspace { grid-template-columns: 1fr; }
-}
+/* ---- Checkpoint 2 refinement: map-dominant layout + activity history ---- */
 
-/* ---- Checkpoint 1 refinement: consolidated layout + explanations ---- */
-
-/* Center column = map above, playback bar below */
+/* Center column = map filling the available height. */
 .map-column { display: flex; flex-direction: column; min-height: 0; }
 .map-stage { flex: 1; }
 
-.playback-bar {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 8px 14px;
-  border-top: 1px solid var(--line);
-  background: var(--paper-deep);
-  flex-wrap: wrap;
-}
-.playback-controls { display: flex; gap: 8px; }
-.playback-position { font: 12px var(--mono); color: var(--ink-strong); }
-.playback-counts { display: flex; gap: 16px; margin: 0 0 0 auto; flex-wrap: wrap; }
-.playback-counts div { display: flex; gap: 6px; align-items: baseline; font: 11px var(--mono); }
-.playback-counts dt { color: var(--ink-muted); text-transform: uppercase; }
-.playback-counts dd { margin: 0; color: var(--ink-strong); }
-
-/* Topbar metrics: starting host only (counts moved to the playback bar) */
+/* Topbar metrics: starting host only (counts moved to the right panel). */
 .status-metrics dd .muted { font-size: 10px; text-transform: uppercase; }
 
 /* Inventory tags */
@@ -636,4 +607,77 @@ button.secondary {
 .host-badges { display: flex; gap: 8px; margin: 6px 0 0; flex-wrap: wrap; }
 .badge-seed { color: var(--seed-mark); }
 .inspector-actions { padding: 12px 16px; border-top: 1px solid var(--line); }
+.back-actions { border-top: 0; border-bottom: 1px solid var(--line); }
 .checks-heading { margin-top: 12px; }
+.evidence-line { margin: 10px 0 0; font: 11px var(--mono); color: var(--ink-muted); }
+.evidence-line .eyebrow { display: inline; margin: 0 6px 0 0; }
+
+/* Counts summary — compromised / discovered / attempts at the current step. */
+.counts-summary {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  margin: 0;
+  background: var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.counts-summary div { background: var(--paper-deep); padding: 8px 12px; display: grid; gap: 2px; }
+.counts-summary dt { font: 9px var(--mono); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
+.counts-summary dd { margin: 0; font: 16px var(--mono); color: var(--ink-strong); }
+.counts-of { color: var(--ink-muted); font-size: 12px; }
+.counts-attempts { display: flex; gap: 8px; font-size: 12px; }
+
+/* Activity history — a growing chronological list of reached events. */
+.history-status {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 14px;
+  background: var(--paper-deep);
+  border-bottom: 1px solid var(--line);
+  font: 11px var(--mono);
+}
+.history-following { color: var(--ink-muted); }
+.history-inspecting { color: var(--ink-strong); }
+.compact-btn { min-height: 26px; padding: 0 8px; font-size: 10px; }
+
+.history-list { list-style: none; margin: 0; padding: 0; }
+.history-row { border-bottom: 1px solid var(--line); }
+.history-row-head {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 8px 12px;
+  text-align: left;
+  text-transform: none;
+  background: transparent;
+  border: 0;
+}
+.history-row-head:hover { background: var(--state-discovered-soft); color: var(--ink-strong); }
+.history-step { font: 10px var(--mono); color: var(--ink-muted); min-width: 16px; }
+.history-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
+.history-dot.tone-succeeded { background: var(--state-compromised); }
+.history-dot.tone-blocked { background: var(--state-blocked); }
+.history-dot.tone-indeterminate { background: var(--state-unknown); }
+.history-dot.tone-pending { background: var(--state-discovered); }
+.history-headline { font: 12px var(--mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-now { font: 9px var(--mono); text-transform: uppercase; letter-spacing: 0.04em; color: var(--state-discovered); }
+
+/* Current step: a left accent bar + emphasized headline. */
+.row-current > .history-row-head { box-shadow: inset 3px 0 0 var(--state-discovered); }
+.row-current > .history-row-head .history-headline { color: var(--ink-strong); font-weight: 600; }
+/* Focused (expanded) entry, and an inspected older entry distinct from current. */
+.row-focused { background: var(--paper); }
+.row-inspecting { outline: 2px solid var(--ink-strong); outline-offset: -2px; }
+
+.history-detail { padding: 4px 14px 12px 36px; border-top: 1px dashed var(--line); }
+.history-detail .facts { margin-top: 8px; }
+.history-actions { margin-top: 10px; }

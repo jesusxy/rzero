@@ -54,24 +54,42 @@ export function createSimulationStore() {
     return current !== null && position > 0 ? current.events[position - 1]! : null
   })
 
+  // Drops a playback-relative selection that no longer has a visible event at
+  // the given cursor (an inspected event that is now in the future), so the
+  // inspector falls back to following the current step.
+  function dropStaleEventSelection(next: number): void {
+    const sel = selection()
+    if (sel?.type === 'event' && sel.index >= next) setSelection(null)
+  }
+  function moveCursor(next: number): void {
+    setCursor(next)
+    dropStaleEventSelection(next)
+  }
+
   function start(): void {
     const scenario = compiled()
     if (scenario === null) return
     setRun(runScenario(scenario))
     setCursor(0) // initialize replay at the beginning of the recording
     setPhase('ready')
-    // Selection is viewer state and is preserved deliberately across runs.
+    // A new recording invalidates playback-relative selections (events and
+    // attempts). Host selection is identity-stable, so it is kept.
+    const sel = selection()
+    if (sel?.type === 'event' || sel?.type === 'attempt') setSelection(null)
   }
 
   function stepForward(): void {
     const current = run()
-    if (current !== null) setCursor((c) => Math.min(c + 1, current.events.length))
+    if (current !== null) moveCursor(Math.min(cursor() + 1, current.events.length))
   }
   function stepBackward(): void {
-    setCursor((c) => Math.max(0, c - 1))
+    moveCursor(Math.max(0, cursor() - 1))
   }
   function restart(): void {
-    setCursor(0)
+    moveCursor(0)
+    // Clear a pinned attempt too; at the start of the recording it has no
+    // resolved facts to inspect. Host selection is kept.
+    if (selection()?.type === 'attempt') setSelection(null)
   }
 
   function selectAsset(id: string): void {
@@ -79,6 +97,17 @@ export function createSimulationStore() {
   }
   function selectAttempt(id: string): void {
     setSelection({ type: 'attempt', id })
+  }
+  /** Inspects a specific history event without moving the replay cursor. */
+  function selectEvent(index: number): void {
+    setSelection({ type: 'event', index })
+  }
+  /** Seeks to a history event (so it becomes the current step) and follows it. */
+  function jumpToEvent(index: number): void {
+    const current = run()
+    if (current === null) return
+    setCursor(Math.max(0, Math.min(index + 1, current.events.length)))
+    setSelection(null)
   }
   /** Clears the pin so the inspector follows the current step again. */
   function followCurrentStep(): void {
@@ -112,6 +141,8 @@ export function createSimulationStore() {
     restart,
     selectAsset,
     selectAttempt,
+    selectEvent,
+    jumpToEvent,
     selectLink,
     followCurrentStep,
   }

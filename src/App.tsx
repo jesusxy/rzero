@@ -7,9 +7,9 @@ import {
   attemptsByLink,
   buildStaticAssets,
   buildStaticLinks,
+  displayName,
   isoWaypoints,
   linkViewState,
-  playbackCounts,
 } from './app/view'
 import { BUILTIN_SCENARIO_LABEL, BUILTIN_SCENARIO_NOTE } from './app/scenario'
 import './App.css'
@@ -35,11 +35,11 @@ function App() {
     return buildStaticLinks(compiled, store.layout(), (_link, from, to) => isoWaypoints(from, to, occ))
   })
 
-  const counts = createMemo(() => {
-    const compiled = store.compiled()
-    return compiled === null ? null : playbackCounts(compiled, store.replay())
-  })
   const linkLedger = createMemo(() => attemptsByLink(store.replay()))
+  const startName = () => {
+    const seed = store.compiled()?.effective.initial_asset_id
+    return seed === undefined ? '—' : displayName(store.compiled(), seed)
+  }
 
   // Reactive accessors read through to the current replay/selection.
   const stateOf = (id: string) => assetState(store.replay(), id)
@@ -70,16 +70,44 @@ function App() {
           <dl class="status-metrics">
             <div>
               <dt>Starting host</dt>
-              <dd>{store.compiled()?.effective.initial_asset_id ?? '—'} <span class="muted">configured</span></dd>
+              <dd>{startName()} <span class="muted">configured</span></dd>
             </div>
-            <div><dt>Hosts</dt><dd>{counts()?.total ?? staticAssets().length}</dd></div>
+            <div><dt>Hosts</dt><dd>{staticAssets().length}</dd></div>
           </dl>
         </section>
 
-        <section class="scenario-controls" aria-label="Run">
-          <button type="button" onClick={() => store.start()}>
-            {store.phase() === 'ready' ? 'Re-run' : 'Start'}
-          </button>
+        <section class="playback-nav" aria-label="Playback controls">
+          <span class="nav-step" aria-live="polite">
+            <Show when={store.hasRun()} fallback={<span class="muted">Not started</span>}>
+              Step {store.cursor()} / {store.totalEvents()}
+            </Show>
+          </span>
+          <div class="nav-buttons">
+            <button
+              type="button"
+              class="secondary"
+              onClick={() => store.restart()}
+              disabled={store.phase() !== 'ready' || store.atStart()}
+              aria-label="Restart replay at the beginning"
+            >⟲</button>
+            <button
+              type="button"
+              class="secondary"
+              onClick={() => store.stepBackward()}
+              disabled={store.phase() !== 'ready' || store.atStart()}
+              aria-label="Previous step"
+            >◀</button>
+            <button
+              type="button"
+              class="secondary"
+              onClick={() => store.stepForward()}
+              disabled={store.phase() !== 'ready' || store.atEnd()}
+              aria-label="Next step"
+            >▶</button>
+            <button type="button" class="nav-run" onClick={() => store.start()}>
+              {store.phase() === 'ready' ? 'Re-run' : 'Start'}
+            </button>
+          </div>
         </section>
       </header>
 
@@ -132,24 +160,6 @@ function App() {
             onSelectAsset={store.selectAsset}
             onSelectLink={store.selectLink}
           />
-
-          <div class="playback-bar" aria-label="Playback">
-            <div class="playback-controls">
-              <button type="button" class="secondary" onClick={() => store.restart()} disabled={store.phase() !== 'ready' || store.atStart()} aria-label="Restart replay at the beginning">⟲ Restart</button>
-              <button type="button" class="secondary" onClick={() => store.stepBackward()} disabled={store.phase() !== 'ready' || store.atStart()} aria-label="Step backward one event">◀ Step</button>
-              <button type="button" class="secondary" onClick={() => store.stepForward()} disabled={store.phase() !== 'ready' || store.atEnd()} aria-label="Step forward one event">Step ▶</button>
-            </div>
-            <div class="playback-position" aria-live="polite">
-              <Show when={store.hasRun()} fallback={<span class="muted">Not started — press Start</span>}>
-                <span class="position-label">Step {store.cursor()} / {store.totalEvents()}</span>
-              </Show>
-            </div>
-            <dl class="playback-counts" aria-label="Counts">
-              <div><dt>Compromised</dt><dd>{counts()?.compromised ?? 0} / {counts()?.total ?? 0}</dd></div>
-              <div><dt>Discovered</dt><dd>{counts()?.discovered ?? 0}</dd></div>
-              <div><dt>Attempts</dt><dd>✓ {counts()?.succeeded ?? 0} · ✗ {counts()?.blocked ?? 0} · ? {counts()?.indeterminate ?? 0}</dd></div>
-            </dl>
-          </div>
         </div>
 
         <Inspector store={store} />

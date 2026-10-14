@@ -400,6 +400,24 @@ button.secondary {
   }
 }
 
+/* Desktop: pin the dashboard to the viewport. The app-shell becomes a fixed
+   viewport-height grid (not just a minimum), so the 1fr workspace track is
+   bounded; the workspace's single row is minmax(0, 1fr) so columns can shrink
+   below their content. Expanding inspector content then scrolls inside
+   .inspector-body instead of growing the page and shifting the map. Below this
+   width the layout stacks and the page scrolls normally (see queries above). */
+@media (min-width: 1081px) {
+  .app-shell {
+    height: 100svh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace {
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
 /* ---- Checkpoint 1: live scenario, playback and inspection ---- */
 
 .muted { color: var(--ink-muted); }

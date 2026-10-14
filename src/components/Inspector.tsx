@@ -1,4 +1,4 @@
-import { createEffect, createMemo, For, Show, Switch, Match } from 'solid-js'
+import { createEffect, createMemo, createSignal, on, For, Show, Switch, Match } from 'solid-js'
 import { firstCompromisePath, type Check, type SimulationEvent } from '../core'
 import type { SimulationStore } from '../app/store'
 import {
@@ -33,15 +33,74 @@ export function Inspector(props: { store: SimulationStore }) {
     return compiled === null ? null : playbackCounts(compiled, store.replay())
   })
 
-  // Follow newly reached events while following playback (no explicit
-  // selection); never pull the user away when they are inspecting.
+  // Follow newly reached events while following playback, but only ever bring
+  // the current event's *heading* into view — never jump past it to the bottom
+  // of a long explanation. Following is suspended when the user scrolls back
+  // manually, and resumes on a step/jump or an explicit "Follow current step".
   let bodyEl: HTMLDivElement | undefined
-  createEffect(() => {
-    store.cursor()
-    if (store.selection() === null && store.hasRun() && bodyEl !== undefined) {
-      bodyEl.scrollTop = bodyEl.scrollHeight
+  const [autoFollow, setAutoFollow] = createSignal(true)
+
+  const scrollCurrentIntoView = () => {
+    const c = bodyEl
+    if (c === undefined) return
+    const row = c.querySelector('.row-current') as HTMLElement | null
+    if (row === null) return
+    const head = (row.querySelector('.history-row-head') as HTMLElement | null) ?? row
+    const sticky = c.querySelector('.history-status') as HTMLElement | null
+    const stickyH = sticky === null ? 0 : sticky.getBoundingClientRect().height
+    const cRect = c.getBoundingClientRect()
+    const headRect = head.getBoundingClientRect()
+    const rowRect = row.getBoundingClientRect()
+    const topInset = cRect.top + stickyH
+    let target = c.scrollTop
+    if (headRect.top < topInset) {
+      // Heading is hidden above the fold (under the sticky status bar).
+      target = c.scrollTop - (topInset - headRect.top)
+    } else if (rowRect.bottom > cRect.bottom) {
+      // Row runs past the bottom: align its end to the view if it fits,
+      // otherwise pin the heading just under the status bar so a long
+      // explanation scrolls below instead of pushing the heading off-screen.
+      const available = cRect.bottom - topInset
+      target = c.scrollTop + (rowRect.height <= available ? rowRect.bottom - cRect.bottom : headRect.top - topInset)
     }
-  })
+    c.scrollTop = Math.max(0, Math.round(target))
+  }
+
+  const follow = () => {
+    if (store.selection() !== null) store.followCurrentStep()
+    setAutoFollow(true)
+    requestAnimationFrame(scrollCurrentIntoView)
+  }
+
+  // A step or jump is an explicit playback action: re-engage following and
+  // bring the new current heading into view. Inspecting (selection is an event)
+  // leaves the viewport where it is.
+  createEffect(
+    on(
+      () => store.cursor(),
+      () => {
+        if (store.selection() === null) {
+          setAutoFollow(true)
+          requestAnimationFrame(scrollCurrentIntoView)
+        }
+      },
+      { defer: true },
+    ),
+  )
+
+  // Manual scroll-back suspends following. We read it from the input device
+  // (wheel up / keyboard up) rather than scrollTop, so the programmatic
+  // follow-scroll — which never emits these events — can't be mistaken for it.
+  const suspendFollow = () => {
+    if (store.selection() === null && autoFollow()) setAutoFollow(false)
+  }
+  const onBodyWheel = (event: WheelEvent) => {
+    if (event.deltaY < 0 && (bodyEl?.scrollTop ?? 0) > 0) suspendFollow()
+  }
+  const onBodyKeydown = (event: KeyboardEvent) => {
+    const back = event.key === 'ArrowUp' || event.key === 'PageUp' || event.key === 'Home'
+    if (back && (bodyEl?.scrollTop ?? 0) > 0) suspendFollow()
+  }
 
   return (
     <aside class="inspector" aria-label="Inspector">
@@ -52,7 +111,7 @@ export function Inspector(props: { store: SimulationStore }) {
 
       <CountsSummary counts={counts()} />
 
-      <div class="inspector-body" ref={(el) => (bodyEl = el)}>
+      <div class="inspector-body" ref={(el) => (bodyEl = el)} on:wheel={onBodyWheel} onKeyDown={onBodyKeydown}>
         <Switch fallback={<p class="inspector-empty">Preparing scenario…</p>}>
           <Match when={store.phase() === 'error'}>
             <p class="inspector-empty">The scenario could not be prepared — see the banner above.</p>
@@ -62,7 +121,7 @@ export function Inspector(props: { store: SimulationStore }) {
           <Match when={pinnedAssetId()}>
             {(id) => (
               <>
-                <BackToHistory store={store} />
+                <BackToHistory onFollow={follow} />
                 <HostPanel store={store} assetId={id()} />
               </>
             )}
@@ -72,7 +131,7 @@ export function Inspector(props: { store: SimulationStore }) {
           <Match when={pinnedAttemptId()}>
             {(id) => (
               <>
-                <BackToHistory store={store} />
+                <BackToHistory onFollow={follow} />
                 <AttemptPanel store={store} attemptId={id()} />
               </>
             )}
@@ -80,7 +139,7 @@ export function Inspector(props: { store: SimulationStore }) {
 
           {/* Default: the growing playback history */}
           <Match when={true}>
-            <ActivityHistory store={store} />
+            <ActivityHistory store={store} autoFollow={autoFollow()} onFollow={follow} />
           </Match>
         </Switch>
       </div>
@@ -114,7 +173,7 @@ function CountsSummary(props: { counts: ReturnType<typeof playbackCounts> | null
 
 // --- Activity history -------------------------------------------------------
 
-function ActivityHistory(props: { store: SimulationStore }) {
+function ActivityHistory(props: { store: SimulationStore; autoFollow: boolean; onFollow: () => void }) {
   const store = props.store
 
   // Events reached at the current replay position (events[0 .. cursor-1]).
@@ -132,6 +191,9 @@ function ActivityHistory(props: { store: SimulationStore }) {
     const sel = store.selection()
     return sel?.type === 'event' && sel.index !== store.cursor() - 1
   }
+  // Following was paused because the user scrolled back from the current step.
+  const scrolledAway = () => store.selection() === null && !props.autoFollow
+  const detached = () => inspectingOlder() || scrolledAway()
 
   return (
     <div class="history">
@@ -145,11 +207,13 @@ function ActivityHistory(props: { store: SimulationStore }) {
         }>
           <div class="history-status" aria-live="polite">
             <Show
-              when={inspectingOlder()}
+              when={detached()}
               fallback={<span class="history-following">Following current step · {store.cursor()} / {store.totalEvents()}</span>}
             >
-              <span class="history-inspecting">Inspecting step {focusedIndex() + 1} of {store.cursor()}</span>
-              <button type="button" class="secondary compact-btn" onClick={() => store.followCurrentStep()}>
+              <span class="history-inspecting">
+                {inspectingOlder() ? `Inspecting step ${focusedIndex() + 1} of ${store.cursor()}` : 'Paused — scrolled back'}
+              </span>
+              <button type="button" class="secondary compact-btn" onClick={() => props.onFollow()}>
                 Follow current step
               </button>
             </Show>
@@ -239,10 +303,10 @@ function Headline(props: { explanation: EventExplanation }) {
   )
 }
 
-function BackToHistory(props: { store: SimulationStore }) {
+function BackToHistory(props: { onFollow: () => void }) {
   return (
     <div class="inspector-actions back-actions">
-      <button type="button" class="secondary" onClick={() => props.store.followCurrentStep()}>
+      <button type="button" class="secondary" onClick={() => props.onFollow()}>
         ← Activity history
       </button>
     </div>

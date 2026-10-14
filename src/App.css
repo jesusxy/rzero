@@ -428,7 +428,7 @@ button.secondary {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 60px;
   padding: 10px 16px;
   flex-wrap: wrap;
 }
@@ -696,6 +696,6 @@ button.secondary {
 .row-focused { background: var(--paper); }
 .row-inspecting { outline: 2px solid var(--ink-strong); outline-offset: -2px; }
 
-.history-detail { padding: 4px 14px 12px 36px; border-top: 1px dashed var(--line); }
+.history-detail { padding: 4px 9px 12px 9px; border-top: 1px dashed var(--line); }
 .history-detail .facts { margin-top: 8px; }
 .history-actions { margin-top: 10px; }

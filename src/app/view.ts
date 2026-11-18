@@ -1,13 +1,3 @@
-// Pure view derivation. Turns the immutable run recording and a replay state
-// (the viewer's position) into what the map and inspector display. It never
-// recomputes propagation: asset and link visuals come only from the recorded
-// events as reduced into the replay state.
-//
-// The static scene (ids, kinds, positions, link endpoints) depends only on the
-// compiled scenario, so it keeps a stable identity across playback and selection
-// updates — the components iterate it once and read dynamic state through
-// accessors, which keeps rendered elements (and keyboard focus) in place.
-
 import type {
   Asset,
   AttemptView,
@@ -28,15 +18,12 @@ export type LinkViewState = 'none' | 'pending' | 'succeeded' | 'blocked' | 'inde
 export type Selection =
   | { readonly type: 'asset'; readonly id: string }
   | { readonly type: 'attempt'; readonly id: string }
-  /** A specific history event being inspected (0-based event index). */
   | { readonly type: 'event'; readonly index: number }
   | null
 
-/** Stable per-asset facts for the map/inventory (independent of playback). */
 export type StaticMapAsset = {
   readonly id: string
   readonly label: string
-  /** Concise map name, e.g. WS-01; consistent across panels. */
   readonly shortName: string
   readonly kind: Asset['kind']
   readonly platform: Asset['platform']
@@ -44,7 +31,6 @@ export type StaticMapAsset = {
   readonly isSeed: boolean
 }
 
-/** Stable per-link facts for the map (endpoints and presentation waypoints). */
 export type StaticMapLink = {
   readonly id: string
   readonly source: string
@@ -53,7 +39,6 @@ export type StaticMapLink = {
   readonly access: Link['access']
   readonly from: GridPosition
   readonly to: GridPosition
-  /** Presentation-only bend points between from and to (grid space). */
   readonly waypoints: readonly GridPosition[]
 }
 
@@ -66,9 +51,6 @@ export type PlaybackCounts = {
   readonly indeterminate: number
 }
 
-// Concise, consistent display names (WS-01, SRV-01, …): a per-kind sequence over
-// assets sorted by ID. Cached per compiled scenario so every panel agrees. The
-// internal fixture ID remains available (and is shown in the inspector).
 const KIND_ABBREV: Record<Asset['kind'], string> = {
   workstation: 'WS',
   server: 'SRV',
@@ -109,11 +91,6 @@ export function buildStaticAssets(
   }))
 }
 
-/**
- * Presentation-only waypoints that route a link along the two isometric grid
- * directions (grid-axis segments), bending around building footprints. Returns
- * [] when the link is already axis-aligned. Deterministic; for the fixed scene.
- */
 export function isoWaypoints(
   from: GridPosition,
   to: GridPosition,
@@ -150,14 +127,12 @@ export function buildStaticLinks(
   })
 }
 
-/** Persistent replay state of a single asset at the current cursor. */
 export function assetState(replay: ReplayState, id: string): AssetViewState {
   if (replay.compromised.includes(id)) return 'compromised'
   if (replay.discovered.includes(id)) return 'discovered'
   return 'modeled'
 }
 
-/** Latest attempt recorded for each link up to the cursor (succeeded wins, else newest). */
 export function attemptsByLink(replay: ReplayState): ReadonlyMap<string, AttemptView> {
   const byLink = new Map<string, AttemptView>()
   for (const attempt of Object.values(replay.attempts)) {
@@ -194,14 +169,11 @@ export function playbackCounts(compiled: CompiledScenario, replay: ReplayState):
   }
 }
 
-/** The attempt ID a replay event refers to, if it is an attempt event. */
 export function eventAttemptId(event: SimulationEvent | null): string | null {
   if (event === null) return null
   if (event.type === 'propagation_attempted' || event.type === 'propagation_resolved') return event.attempt_id
   return null
 }
-
-// --- Event explanations -----------------------------------------------------
 
 export type ExplanationTone = 'neutral' | 'succeeded' | 'blocked' | 'indeterminate' | 'pending'
 
@@ -211,7 +183,6 @@ export type EventExplanation = {
   readonly detail?: string
 }
 
-/** The decisive check: first failure, else first unknown. */
 export function primaryCheck(checks: readonly Check[]): Check | null {
   return checks.find((c) => c.status === 'fail') ?? checks.find((c) => c.status === 'unknown') ?? null
 }
@@ -237,7 +208,6 @@ function reasonPhrase(check: Check | null): string {
   }
 }
 
-/** A readable, checks-derived explanation of an applied event. Covers every event type. */
 export function explainEvent(event: SimulationEvent, compiled: CompiledScenario | null): EventExplanation {
   const name = (id: string) => displayName(compiled, id)
   switch (event.type) {
@@ -283,7 +253,6 @@ export function explainEvent(event: SimulationEvent, compiled: CompiledScenario 
   }
 }
 
-/** Explanation for an attempt from its ledger view (status + recorded checks). */
 export function explainAttempt(attempt: AttemptView, compiled: CompiledScenario | null): EventExplanation {
   const source = displayName(compiled, attempt.source_id)
   const target = displayName(compiled, attempt.target_id)
@@ -299,8 +268,6 @@ export function explainAttempt(attempt: AttemptView, compiled: CompiledScenario 
     : { headline: `Indeterminate: ${reason}`, tone: 'indeterminate', detail: `${source} → ${target}.` }
 }
 
-// --- Lookups ----------------------------------------------------------------
-
 export function assetById(compiled: CompiledScenario, id: string): Asset | undefined {
   return compiled.effective.network.assets.find((asset) => asset.id === id)
 }
@@ -313,13 +280,11 @@ export function capabilityById(compiled: CompiledScenario, id: string): Capabili
   return compiled.effective.profile.capabilities.find((capability) => capability.id === id)
 }
 
-/** The concise display name for an asset ID, consistent across all panels. */
 export function displayName(compiled: CompiledScenario | null, id: string): string {
   if (compiled === null) return id
   return nameMap(compiled).get(id) ?? id
 }
 
-/** Resolved event for an attempt ID, from the full recording (any cursor). */
 export function attemptResolvedEvent(run: RunResult, id: string): PropagationResolvedEvent | null {
   for (const event of run.events) {
     if (event.type === 'propagation_resolved' && event.attempt_id === id) return event
@@ -327,7 +292,6 @@ export function attemptResolvedEvent(run: RunResult, id: string): PropagationRes
   return null
 }
 
-/** Static source/target/link/capability for an attempt ID, from the full recording. */
 export function attemptStaticInfo(
   run: RunResult,
   id: string,
@@ -345,7 +309,6 @@ export function attemptStaticInfo(
   return null
 }
 
-/** The most recent attempt ID recorded on a link across the whole run, if any. */
 export function attemptIdForLink(run: RunResult, linkId: string): string | null {
   let id: string | null = null
   for (const event of run.events) {

@@ -74,10 +74,8 @@ function blockFaces(asset: StaticMapAsset) {
   }
 }
 
-// Decorative, recognizable detail per silhouette family. Never implies facts.
 function decorations(asset: StaticMapAsset, faces: ReturnType<typeof blockFaces>) {
   if (asset.kind === 'server') {
-    // Rack-unit lines across the right face.
     return [0.28, 0.5, 0.72].map((t) =>
       points([lerp(faces.g.bottom, faces.r.bottom, t), lerp(faces.g.right, faces.r.right, t)]),
     )
@@ -113,7 +111,6 @@ function edgeGeometry(link: StaticMapLink) {
     { x: back.x + perp.x * arrowHalf, y: back.y + perp.y * arrowHalf },
     { x: back.x - perp.x * arrowHalf, y: back.y - perp.y * arrowHalf },
   ])
-  // Mid point + a small direction chevron there.
   let total = 0
   for (let i = 1; i < linePts.length; i += 1) total += Math.hypot(linePts[i]!.x - linePts[i - 1]!.x, linePts[i]!.y - linePts[i - 1]!.y)
   let acc = 0
@@ -153,7 +150,6 @@ function sceneBounds(assets: readonly StaticMapAsset[]): ViewBox {
     }
   }
   if (!Number.isFinite(minX)) return { x: 0, y: 0, w: 100, h: 72 }
-  // Breathing room around the whole network on the initial fit.
   const pad = 11
   return { x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 }
 }

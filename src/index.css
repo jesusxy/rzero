@@ -1,5 +1,4 @@
 :root {
-  /* Cool light palette (token names kept; values refreshed). */
   --paper: #f5f7f9;
   --paper-deep: #e9edf1;
   --ink: #39434f;
@@ -10,8 +9,6 @@
   --grid: #d5dde5;
   --node: #e4e9ee;
   --node-shadow: #ccd4dc;
-  /* Restrained state accents. Never color-only: outlines, marks, and text
-     in the legend, inspector and inventory accompany every state. */
   --state-compromised: #c0392b;
   --state-compromised-soft: rgba(192, 57, 43, 0.12);
   --state-discovered: #2f6fb0;

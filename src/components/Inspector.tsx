@@ -16,7 +16,6 @@ import {
 
 const checkSymbol: Record<Check['status'], string> = { pass: '✓', fail: '✗', unknown: '?' }
 
-/** True for the two attempt-bearing event types (they carry link/capability). */
 function isAttemptEvent(
   event: SimulationEvent,
 ): event is Extract<SimulationEvent, { type: 'propagation_attempted' | 'propagation_resolved' }> {
@@ -33,10 +32,6 @@ export function Inspector(props: { store: SimulationStore }) {
     return compiled === null ? null : playbackCounts(compiled, store.replay())
   })
 
-  // Follow newly reached events while following playback, but only ever bring
-  // the current event's *heading* into view — never jump past it to the bottom
-  // of a long explanation. Following is suspended when the user scrolls back
-  // manually, and resumes on a step/jump or an explicit "Follow current step".
   let bodyEl: HTMLDivElement | undefined
   const [autoFollow, setAutoFollow] = createSignal(true)
 
@@ -54,12 +49,8 @@ export function Inspector(props: { store: SimulationStore }) {
     const topInset = cRect.top + stickyH
     let target = c.scrollTop
     if (headRect.top < topInset) {
-      // Heading is hidden above the fold (under the sticky status bar).
       target = c.scrollTop - (topInset - headRect.top)
     } else if (rowRect.bottom > cRect.bottom) {
-      // Row runs past the bottom: align its end to the view if it fits,
-      // otherwise pin the heading just under the status bar so a long
-      // explanation scrolls below instead of pushing the heading off-screen.
       const available = cRect.bottom - topInset
       target = c.scrollTop + (rowRect.height <= available ? rowRect.bottom - cRect.bottom : headRect.top - topInset)
     }
@@ -72,9 +63,6 @@ export function Inspector(props: { store: SimulationStore }) {
     requestAnimationFrame(scrollCurrentIntoView)
   }
 
-  // A step or jump is an explicit playback action: re-engage following and
-  // bring the new current heading into view. Inspecting (selection is an event)
-  // leaves the viewport where it is.
   createEffect(
     on(
       () => store.cursor(),
@@ -88,9 +76,6 @@ export function Inspector(props: { store: SimulationStore }) {
     ),
   )
 
-  // Manual scroll-back suspends following. We read it from the input device
-  // (wheel up / keyboard up) rather than scrollTop, so the programmatic
-  // follow-scroll — which never emits these events — can't be mistaken for it.
   const suspendFollow = () => {
     if (store.selection() === null && autoFollow()) setAutoFollow(false)
   }
@@ -117,7 +102,6 @@ export function Inspector(props: { store: SimulationStore }) {
             <p class="inspector-empty">The scenario could not be prepared — see the banner above.</p>
           </Match>
 
-          {/* Host inspection — available before and after Start */}
           <Match when={pinnedAssetId()}>
             {(id) => (
               <>
@@ -127,7 +111,6 @@ export function Inspector(props: { store: SimulationStore }) {
             )}
           </Match>
 
-          {/* Attempt inspection (from a map route) */}
           <Match when={pinnedAttemptId()}>
             {(id) => (
               <>
@@ -137,7 +120,6 @@ export function Inspector(props: { store: SimulationStore }) {
             )}
           </Match>
 
-          {/* Default: the growing playback history */}
           <Match when={true}>
             <ActivityHistory store={store} autoFollow={autoFollow()} onFollow={follow} />
           </Match>
@@ -171,18 +153,13 @@ function CountsSummary(props: { counts: ReturnType<typeof playbackCounts> | null
   )
 }
 
-// --- Activity history -------------------------------------------------------
-
 function ActivityHistory(props: { store: SimulationStore; autoFollow: boolean; onFollow: () => void }) {
   const store = props.store
 
-  // Events reached at the current replay position (events[0 .. cursor-1]).
   const reached = createMemo<readonly SimulationEvent[]>(() => {
     const run = store.run()
     return run === null ? [] : run.events.slice(0, store.cursor())
   })
-  // The focused (expanded) event index: an explicitly inspected event, else the
-  // current step. Following = no explicit event selection.
   const focusedIndex = () => {
     const sel = store.selection()
     return sel?.type === 'event' ? sel.index : store.cursor() - 1
@@ -191,7 +168,6 @@ function ActivityHistory(props: { store: SimulationStore; autoFollow: boolean; o
     const sel = store.selection()
     return sel?.type === 'event' && sel.index !== store.cursor() - 1
   }
-  // Following was paused because the user scrolled back from the current step.
   const scrolledAway = () => store.selection() === null && !props.autoFollow
   const detached = () => inspectingOlder() || scrolledAway()
 
@@ -261,7 +237,6 @@ function HistoryRow(props: {
         <Show when={props.isCurrent}><span class="history-now">current</span></Show>
       </button>
 
-      {/* Expanded detail is mounted only for the focused row. */}
       <Show when={props.focused}>
         <div class="history-detail">
           <Show when={explanation().detail}>
@@ -289,8 +264,6 @@ function HistoryRow(props: {
     </li>
   )
 }
-
-// --- Shared pieces ----------------------------------------------------------
 
 function Headline(props: { explanation: EventExplanation }) {
   return (

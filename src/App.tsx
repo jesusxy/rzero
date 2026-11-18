@@ -17,8 +17,6 @@ import './App.css'
 function App() {
   const store = createSimulationStore()
 
-  // Static scene — depends only on the compiled scenario (set once), so it keeps
-  // a stable identity and the rendered elements/focus survive playback updates.
   const staticAssets = createMemo(() => {
     const compiled = store.compiled()
     return compiled === null ? [] : buildStaticAssets(compiled, store.layout())
@@ -41,7 +39,6 @@ function App() {
     return seed === undefined ? '—' : displayName(store.compiled(), seed)
   }
 
-  // Reactive accessors read through to the current replay/selection.
   const stateOf = (id: string) => assetState(store.replay(), id)
   const assetSelected = (id: string) => {
     const s = store.selection()

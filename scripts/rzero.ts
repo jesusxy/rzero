@@ -2,19 +2,30 @@
 //
 //   bun run rzero validate <scenario.json|scenario.yaml> [--json]
 //   bun run rzero run      <scenario.json|scenario.yaml> [--json] [--max-events N]
+//   bun run rzero story    <scenario.json|scenario.yaml> [--json] [--max-events N]
 //
 // `validate` compiles and reports diagnostics; `run` also executes the
-// deterministic engine and prints the ordered event stream and final state.
+// deterministic engine and prints the ordered event stream and final state;
+// `story` runs it and narrates the stream as walkthrough steps in plain English.
 // Exits 0 on success, 1 when the scenario is rejected, 2 on usage errors.
 
 import { readFileSync } from 'node:fs'
 import { basename } from 'node:path'
-import { importScenario, runScenario, type Diagnostic, type RunResult, type SimulationEvent } from '../src/core'
+import {
+  groupSteps,
+  importScenario,
+  runScenario,
+  type CompiledScenario,
+  type Diagnostic,
+  type RunResult,
+  type SimulationEvent,
+} from '../src/core'
+import { narrate } from '../src/app/narration'
 
 const [command, file, ...flags] = process.argv.slice(2)
 
-if ((command !== 'validate' && command !== 'run') || file === undefined) {
-  console.error('usage: bun run rzero <validate|run> <scenario.json|scenario.yaml> [--json] [--max-events N]')
+if ((command !== 'validate' && command !== 'run' && command !== 'story') || file === undefined) {
+  console.error('usage: bun run rzero <validate|run|story> <scenario.json|scenario.yaml> [--json] [--max-events N]')
   process.exit(2)
 }
 
@@ -29,12 +40,16 @@ if (command === 'validate') {
   process.exit(result.ok ? 0 : 1)
 }
 
-// command === 'run'
+// command === 'run' | 'story'
 if (!result.ok) {
   reportCompile()
   process.exit(1)
 }
 const run = runScenario(result.value, maxEvents === undefined ? {} : { maxEvents })
+if (command === 'story') {
+  reportStory(result.value, run)
+  process.exit(0)
+}
 if (asJson) {
   console.log(JSON.stringify(run, null, 2))
   process.exit(0)
@@ -75,6 +90,39 @@ function reportRun(run: RunResult): void {
   for (const event of run.events) console.log(`  ${event.seq.toString().padStart(3)}  ${line(event)}`)
   console.log(`\ncompromised (${run.state.compromised.length}): ${[...run.state.compromised].sort().join(', ')}`)
   if (run.abort) console.log(`aborted: ${run.abort.code} after seq ${run.abort.last_processed_seq}`)
+}
+
+function reportStory(scenario: CompiledScenario, run: RunResult): void {
+  const steps = groupSteps(run.events)
+  const narrated = steps.map((step) => ({ step, narration: narrate(step, run.events, scenario) }))
+  if (asJson) {
+    console.log(JSON.stringify(narrated.map(({ step, narration }) => ({ ...step, ...narration })), null, 2))
+    return
+  }
+  console.log(`story: ${scenario.name} (${scenario.id}), ${steps.length} steps`)
+  for (const { step, narration } of narrated) {
+    const range = step.end - step.start === 1 ? `seq ${step.start}` : `seq ${step.start}–${step.end - 1}`
+    console.log(`\nStep ${step.index + 1} of ${steps.length}: ${narration.title}  [${range}]`)
+    for (const text of wrap(narration.body, '  ')) console.log(text)
+    if (narration.why !== undefined) for (const text of wrap(`Why: ${narration.why}`, '  ', '       ')) console.log(text)
+  }
+}
+
+/** Word-wraps text to 80 columns with a first-line and continuation indent. */
+function wrap(text: string, indent: string, hanging = indent): string[] {
+  const lines: string[] = []
+  let current = ''
+  for (const word of text.split(' ')) {
+    const prefix = lines.length === 0 ? indent : hanging
+    if (current !== '' && prefix.length + current.length + 1 + word.length > 80) {
+      lines.push(prefix + current)
+      current = word
+    } else {
+      current = current === '' ? word : `${current} ${word}`
+    }
+  }
+  lines.push((lines.length === 0 ? indent : hanging) + current)
+  return lines
 }
 
 function line(event: SimulationEvent): string {

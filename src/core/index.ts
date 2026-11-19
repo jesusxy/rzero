@@ -124,3 +124,4 @@ export {
   stepReplay,
 } from './replay'
 export type { AttemptStatus, AttemptView, ReplayParent, ReplayState } from './replay'
+export { groupSteps, type Step, type StepKind } from './replay/steps'

@@ -160,6 +160,7 @@ export const STEP_TEXT = {
   seed: {
     title: '{seed} starts compromised',
     preview: '{seed} starts compromised',
+    subtitle: 'Initial host',
     body:
       "{seed} is compromised from the start. That is the scenario's chosen starting point, not the result of an attempt. " +
       'Each compromised host takes one turn to try its outgoing links, in a fixed order, and {seed} goes first.',
@@ -188,6 +189,8 @@ export const STEP_TEXT = {
   },
   succeeded: {
     title: '{target} compromised',
+    /** Token {chip}: the capability's short label, e.g. "SMB exploit". */
+    subtitle: '{chip} from {source}',
     requirementsExploit:
       "It works: the network allows {service} from {source} to {target}, {target}'s {service} service is on, and {target} has the {vulnerability} weakness.",
     requirementsExecution:
@@ -201,8 +204,12 @@ export const STEP_TEXT = {
     // service some profile capability uses count.
     /** Later capabilities on this same link will still be tried. */
     moreOptionsOnLink: '{source} still has another way to try {target} over {service}.',
-    /** Token {sources}: the other links' source hosts. */
-    otherLinks: '{target} can still be reached through other links (from {sources}).',
+    /** Other links to the target whose sources are not compromised yet. Tokens {sources}, {is}. */
+    otherLinks: '{target} could still be reached if {sources} {is} compromised.',
+    /** Other links from already-compromised sources that have not been tried yet. */
+    otherLinksPending: '{sources} will still try {target} over another link.',
+    /** Other links exist, but every one has already been tried. */
+    otherLinksExhausted: 'Every other link to {target} has already been tried, so nothing else will.',
     noOtherLinks: 'No other host has a link to {target}, so nothing else will try.',
     /** When the target itself is isolated: no route in this model can reach it. */
     consequenceUnreachable: 'Being cut off protects {target} from every route in this model.',
@@ -226,6 +233,7 @@ export const STEP_TEXT = {
   summary: {
     title: '{count} of {total} hosts compromised',
     preview: 'Results',
+    subtitle: 'Blast radius and what held',
     lead: 'No compromised host has any links left to try, so the spread stops here.',
     compromised: '{count} of {total} hosts {are} compromised, a {percent} blast radius: {hosts}.',
     untouched:
@@ -238,6 +246,7 @@ export const STEP_TEXT = {
   aborted: {
     title: 'The run stopped early',
     preview: 'Results',
+    subtitle: 'Partial results',
     lead: 'The run stopped before it finished, because {reason}.',
     pendingTarget: 'It had just picked {target} as a target but never got to try it.',
     partial:
@@ -247,4 +256,49 @@ export const STEP_TEXT = {
       CANCELLED: 'it was cancelled',
     },
   },
+} as const
+
+// --- Short display labels for the walkthrough UI ---------------------------
+
+/** Plain-English name of a check, by its status ("Network path denied"). */
+export const CHECK_NAMES: { readonly [C in CheckCode]: { readonly pass: string; readonly fail: string; readonly unknown: string } } = {
+  SOURCE_NOT_ISOLATED: { pass: 'Source not isolated', fail: 'Source isolated', unknown: 'Source isolation unknown' },
+  TARGET_NOT_ISOLATED: { pass: 'Target not isolated', fail: 'Target isolated', unknown: 'Target isolation unknown' },
+  TARGET_PLATFORM: { pass: 'Platform supported', fail: 'Platform not supported', unknown: 'Platform unknown' },
+  NETWORK_ACCESS: { pass: 'Network path allowed', fail: 'Network path denied', unknown: 'Network path unknown' },
+  SERVICE_ENABLED: { pass: 'Service turned on', fail: 'Service not available', unknown: 'Service status unknown' },
+  VULNERABILITY_PRESENT: { pass: 'Weakness present', fail: 'Weakness absent', unknown: 'Weakness unknown' },
+  CREDENTIAL_AUTHORIZED: { pass: 'Credential authorized', fail: 'No usable credential', unknown: 'Credential status unknown' },
+}
+
+/** A few words for the map tag at a blocked route's barrier ("link denied"). */
+export const BLOCK_TAGS: { readonly [C in CheckCode]: string } = {
+  SOURCE_NOT_ISOLATED: 'source isolated',
+  TARGET_NOT_ISOLATED: 'target isolated',
+  TARGET_PLATFORM: 'wrong platform',
+  NETWORK_ACCESS: 'link denied',
+  SERVICE_ENABLED: 'service off',
+  VULNERABILITY_PRESENT: 'not vulnerable',
+  CREDENTIAL_AUTHORIZED: 'no credential',
+}
+
+/** Short capability noun for chips ("SMB exploit"), and the mechanism in words. */
+export const MECHANISM_TEXT = {
+  remote_exploit: { chip: 'exploit', words: 'remote exploit' },
+  remote_execution: { chip: 'execution', words: 'remote execution' },
+} as const
+
+export const PLATFORM_NAMES: Readonly<Record<string, string>> = {
+  windows: 'Windows',
+  linux: 'Linux',
+  macos: 'macOS',
+  unknown: 'Unknown platform',
+}
+
+export const PROFILE_TEXT = {
+  scope: { synthetic: 'Synthetic', family: 'Malware family', sample: 'Specific sample' },
+  exploitClause: 'over {service} by exploiting {vulnerability} on {platforms} machines',
+  executionClause: 'over {service} using valid {privilege} credentials on {platforms} machines',
+  /** Token {clauses}: the capability clauses joined with "or". */
+  summary: 'Spreads host to host {clauses}. Needs an allowed network path and {services} turned on.',
 } as const

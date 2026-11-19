@@ -9,7 +9,7 @@ import {
   type RunResult,
   type Step,
 } from '../../src/core'
-import { narrate, type Narration } from '../../src/app/narration'
+import { blockTag, checkName, describeProfile, narrate, type Narration } from '../../src/app/narration'
 import { fill, reasonTemplate } from '../../src/app/narration/narrate'
 import { REASONS, REASON_VARIANTS, SERVICE_NAMES, STEP_TEXT } from '../../src/app/narration/templates'
 import { expectCompiled, fixtureText } from '../core/helpers'
@@ -363,14 +363,35 @@ describe('wording rules', () => {
     const [, , ac, , de] = required[0]!.narrations
     expect(ac!.body).toContain('No other host has a link to WS-03, so nothing else will try.')
     expect(de!.body).toContain('No other host has a link to SRV-02, so nothing else will try.')
-    // 004: B → C also targets C.
+    // 004: B → C also targets C, and B is already compromised with that link untried.
     expect(lab('004', ALL_LABS['004 alternate route']!).narrations[2]!.body).toContain(
-      'WS-03 can still be reached through other links (from WS-02).',
+      'WS-02 will still try WS-03 over another link.',
     )
-    // 007: the WinRM link from the same source still targets B.
+    // 007: the WinRM link from the same (compromised) source is still untried.
     expect(lab('007', ALL_LABS['007 multiple mechanisms']!).narrations[1]!.body).toContain(
-      'WS-02 can still be reached through other links (from WS-01).',
+      'WS-01 will still try WS-02 over another link.',
     )
+    // Another link only matters if its source gets compromised.
+    const waiting = lab('waiting source', {
+      assets: { A: {}, B: {}, C: {} },
+      links: [
+        { id: 'ab', source: 'A', target: 'B', access: 'deny' },
+        { id: 'ac', source: 'A', target: 'C' },
+        { id: 'cb', source: 'C', target: 'B' },
+      ],
+    })
+    expect(waiting.narrations[1]!.parts!.note).toBe('WS-02 could still be reached if WS-03 is compromised.')
+    const twoWaiting = lab('two waiting', {
+      assets: { A: {}, B: {}, C: {}, D: {} },
+      links: [
+        { id: 'ab', source: 'A', target: 'B', access: 'deny' },
+        { id: 'ac', source: 'A', target: 'C' },
+        { id: 'ad', source: 'A', target: 'D' },
+        { id: 'cb', source: 'C', target: 'B' },
+        { id: 'db', source: 'D', target: 'B' },
+      ],
+    })
+    expect(twoWaiting.narrations[1]!.parts!.note).toBe('WS-02 could still be reached if WS-03 or SRV-01 are compromised.')
     // 007 same service: a later capability on this very link will try next.
     const same = lab('007 same', ALL_LABS['007 same service']!).narrations[1]!.body
     expect(same).toContain('WS-01 still has another way to try WS-02 over SMB.')
@@ -485,9 +506,70 @@ describe('wording rules', () => {
       them: 'it',
       they: 'it',
       reason: 'it was cancelled',
+      is: 'is',
+      chip: 'SMB exploit',
     }
     const strings = (value: unknown): string[] =>
       typeof value === 'string' ? [value] : Object.values(value as Record<string, unknown>).flatMap(strings)
     for (const text of strings(STEP_TEXT)) expect(fill(text, supplied)).not.toMatch(LEFTOVER)
+  })
+})
+
+describe('UI-facing fields', () => {
+  test('an attempt body is exactly its parts, in order', () => {
+    for (const s of everything) {
+      s.steps.forEach((step, i) => {
+        const n = s.narrations[i]!
+        if (step.kind !== 'attempt') {
+          expect(n.parts).toBeUndefined()
+          return
+        }
+        const p = n.parts!
+        expect([p.lead, ...p.result, ...(p.stop?.sentences ?? []), ...(p.note ? [p.note] : [])].join(' ')).toBe(n.body)
+        if (step.outcome === 'blocked' || step.outcome === 'indeterminate') {
+          expect(p.stop).toBeDefined()
+          expect(p.note!.length).toBeGreaterThan(0)
+          expect(p.result).toEqual([])
+        }
+        if (step.outcome === 'succeeded') expect(p.stop).toBeUndefined()
+      })
+    }
+  })
+
+  test('001: the deciding check is carried with the stop sentences', () => {
+    const [, , ac] = required[0]!.narrations
+    expect(ac!.parts!.stop!.check).toMatchObject({ code: 'NETWORK_ACCESS', status: 'fail', expected: 'allow', observed: 'deny' })
+    expect(ac!.parts!.lead).toBe('WS-01 tries WS-03 over SMB with the same exploit.')
+    expect(ac!.parts!.note).toBe('No other host has a link to WS-03, so nothing else will try.')
+  })
+
+  test('subtitles for reached steps', () => {
+    expect(required[0]!.narrations.map((n) => n.subtitle)).toEqual([
+      'Initial host',
+      'SMB exploit from WS-01',
+      'Network path denied',
+      'SMB exploit from WS-02',
+      'Weakness absent',
+      'Blast radius and what held',
+    ])
+    expect(lab('005', lab005UnknownVulnerability).narrations[1]!.subtitle).toBe('Weakness unknown')
+    expect(lab('006', lab006Credential('admin', 'valid')).narrations[1]!.subtitle).toBe('WinRM execution from WS-01')
+  })
+
+  test('every check has a plain-English name per status, and every code a block tag', () => {
+    for (const code of CHECK_CODES) {
+      for (const status of ['pass', 'fail', 'unknown'] as const) expect(checkName({ code, status }).length).toBeGreaterThan(0)
+      expect(blockTag({ code }).length).toBeGreaterThan(0)
+    }
+    expect(checkName({ code: 'NETWORK_ACCESS', status: 'fail' })).toBe('Network path denied')
+    expect(blockTag({ code: 'NETWORK_ACCESS' })).toBe('link denied')
+  })
+
+  test('profile description (001 matches the layout mockup)', () => {
+    expect(describeProfile(required[0]!.scenario.effective.profile)).toEqual({
+      name: 'Lab SMB Worm',
+      summary: 'Spreads host to host over SMB by exploiting LAB-SMB-1 on Windows machines. Needs an allowed network path and SMB turned on.',
+      chips: ['SMB', 'Windows', 'Synthetic'],
+    })
   })
 })

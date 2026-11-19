@@ -1,257 +1,55 @@
 import type {
   Asset,
   AttemptView,
-  Capability,
-  Check,
   CompiledScenario,
-  Link,
   PropagationResolvedEvent,
   ReplayState,
-  RunResult,
   SimulationEvent,
+  Step,
 } from '../core'
-import type { GridPosition } from './layout'
 
-export type AssetViewState = 'modeled' | 'discovered' | 'compromised'
-export type LinkViewState = 'none' | 'pending' | 'succeeded' | 'blocked' | 'indeterminate'
+export type HostStatus = 'compromised' | 'unknown' | 'blocked' | null
 
-export type Selection =
-  | { readonly type: 'asset'; readonly id: string }
-  | { readonly type: 'attempt'; readonly id: string }
-  | { readonly type: 'event'; readonly index: number }
-  | null
+export type RouteState = 'untried' | 'pending' | 'succeeded' | 'blocked' | 'indeterminate'
 
-export type StaticMapAsset = {
-  readonly id: string
-  readonly label: string
-  readonly kind: Asset['kind']
-  readonly platform: Asset['platform']
-  readonly position: GridPosition
-  readonly isSeed: boolean
-}
-
-export type StaticMapLink = {
-  readonly id: string
-  readonly source: string
-  readonly target: string
-  readonly service: string
-  readonly access: Link['access']
-  readonly from: GridPosition
-  readonly to: GridPosition
-  readonly waypoints: readonly GridPosition[]
-}
-
-export type PlaybackCounts = {
+export type Metrics = {
   readonly total: number
   readonly compromised: number
-  readonly discovered: number
-  readonly succeeded: number
   readonly blocked: number
-  readonly indeterminate: number
+  readonly unknown: number
+  readonly blastRadius: number
 }
 
-export function buildStaticAssets(
-  compiled: CompiledScenario,
-  layout: ReadonlyMap<string, GridPosition>,
-): StaticMapAsset[] {
-  const seedId = compiled.effective.initial_asset_id
-  return compiled.effective.network.assets.map((asset) => ({
-    id: asset.id,
-    label: asset.label,
-    kind: asset.kind,
-    platform: asset.platform,
-    position: layout.get(asset.id) ?? { x: 15, y: 15 },
-    isSeed: asset.id === seedId,
-  }))
+export function stepIndexAt(steps: readonly Step[], cursor: number): number {
+  if (cursor <= 0) return -1
+  return steps.findIndex((step) => step.start < cursor && cursor <= step.end)
 }
 
-export function isoWaypoints(
-  from: GridPosition,
-  to: GridPosition,
-  occupied: ReadonlySet<string>,
-): GridPosition[] {
-  if (from.x === to.x || from.y === to.y) return []
-  const key = (p: GridPosition) => `${p.x},${p.y}`
-  const elbowA = { x: to.x, y: from.y }
-  const elbowB = { x: from.x, y: to.y }
-  if (!occupied.has(key(elbowA))) return [elbowA]
-  if (!occupied.has(key(elbowB))) return [elbowB]
-  return []
+export function isStepComplete(steps: readonly Step[], cursor: number): boolean {
+  const index = stepIndexAt(steps, cursor)
+  return index >= 0 && cursor === steps[index]!.end
 }
 
-export function buildStaticLinks(
-  compiled: CompiledScenario,
-  layout: ReadonlyMap<string, GridPosition>,
-  waypointsFor: (link: Link, from: GridPosition, to: GridPosition) => readonly GridPosition[],
-): StaticMapLink[] {
-  const fallback = { x: 15, y: 15 }
-  return compiled.effective.network.links.map((link) => {
-    const from = layout.get(link.source_id) ?? fallback
-    const to = layout.get(link.target_id) ?? fallback
-    return {
-      id: link.id,
-      source: link.source_id,
-      target: link.target_id,
-      service: link.service_id,
-      access: link.access,
-      from,
-      to,
-      waypoints: waypointsFor(link, from, to),
-    }
-  })
+export function nextCursor(steps: readonly Step[], cursor: number): number {
+  if (steps.length === 0) return cursor
+  const index = stepIndexAt(steps, cursor)
+  if (index === -1) return steps[0]!.end
+  const step = steps[index]!
+  if (cursor < step.end) return step.end
+  return index + 1 < steps.length ? steps[index + 1]!.end : cursor
 }
 
-export function assetState(replay: ReplayState, id: string): AssetViewState {
-  if (replay.compromised.includes(id)) return 'compromised'
-  if (replay.discovered.includes(id)) return 'discovered'
-  return 'modeled'
+export function backCursor(steps: readonly Step[], cursor: number): number {
+  const index = stepIndexAt(steps, cursor)
+  return index > 0 ? steps[index - 1]!.end : cursor
 }
 
-export function attemptsByLink(replay: ReplayState): ReadonlyMap<string, AttemptView> {
-  const byLink = new Map<string, AttemptView>()
-  for (const attempt of Object.values(replay.attempts)) {
-    const existing = byLink.get(attempt.link_id)
-    if (existing === undefined) {
-      byLink.set(attempt.link_id, attempt)
-    } else if (existing.status !== 'succeeded' && attempt.attempt_id > existing.attempt_id) {
-      byLink.set(attempt.link_id, attempt)
-    }
-  }
-  return byLink
-}
-
-export function linkViewState(attempt: AttemptView | undefined): LinkViewState {
-  return attempt === undefined ? 'none' : attempt.status
-}
-
-export function playbackCounts(compiled: CompiledScenario, replay: ReplayState): PlaybackCounts {
-  let succeeded = 0
-  let blocked = 0
-  let indeterminate = 0
-  for (const attempt of Object.values(replay.attempts)) {
-    if (attempt.status === 'succeeded') succeeded += 1
-    else if (attempt.status === 'blocked') blocked += 1
-    else if (attempt.status === 'indeterminate') indeterminate += 1
-  }
-  return {
-    total: compiled.effective.network.assets.length,
-    compromised: replay.compromised.length,
-    discovered: replay.discovered.length,
-    succeeded,
-    blocked,
-    indeterminate,
-  }
-}
-
-export function eventAttemptId(event: SimulationEvent | null): string | null {
-  if (event === null) return null
-  if (event.type === 'propagation_attempted' || event.type === 'propagation_resolved') return event.attempt_id
-  return null
-}
-
-export type ExplanationTone = 'neutral' | 'succeeded' | 'blocked' | 'indeterminate' | 'pending'
-
-export type EventExplanation = {
-  readonly headline: string
-  readonly tone: ExplanationTone
-  readonly detail?: string
-}
-
-export function primaryCheck(checks: readonly Check[]): Check | null {
-  return checks.find((c) => c.status === 'fail') ?? checks.find((c) => c.status === 'unknown') ?? null
-}
-
-function reasonPhrase(check: Check | null): string {
-  if (check === null) return 'requirements not met'
-  const failed = check.status === 'fail'
-  switch (check.code) {
-    case 'SOURCE_NOT_ISOLATED':
-      return 'source host is isolated'
-    case 'TARGET_NOT_ISOLATED':
-      return 'target host is isolated'
-    case 'TARGET_PLATFORM':
-      return failed ? 'target platform not supported' : 'target platform unknown'
-    case 'NETWORK_ACCESS':
-      return failed ? 'network access denied' : 'network access unknown'
-    case 'SERVICE_ENABLED':
-      return failed ? 'target service not enabled' : 'service status unknown'
-    case 'VULNERABILITY_PRESENT':
-      return failed ? 'vulnerability absent' : 'vulnerability status unknown'
-    case 'CREDENTIAL_AUTHORIZED':
-      return failed ? 'no authorizing credential' : 'credential authorization unknown'
-  }
-}
-
-export function explainEvent(event: SimulationEvent, compiled: CompiledScenario | null): EventExplanation {
-  const name = (id: string) => displayName(compiled, id)
-  switch (event.type) {
-    case 'run_started':
-      return { headline: `Run started — initial host ${name(event.initial_asset_id)}`, tone: 'neutral' }
-    case 'asset_compromised':
-      return event.parent_id === null
-        ? { headline: `${name(event.asset_id)} is the initial compromised host`, tone: 'neutral' }
-        : { headline: `${name(event.asset_id)} compromised`, tone: 'succeeded', detail: `Reached from ${name(event.parent_id)}.` }
-    case 'asset_discovered':
-      return {
-        headline: `${name(event.asset_id)} discovered`,
-        tone: 'neutral',
-        detail: `Now a candidate target, reached from ${name(event.source_id)}. Discovery is not compromise.`,
-      }
-    case 'propagation_attempted':
-      return {
-        headline: `Attempting ${name(event.source_id)} → ${name(event.target_id)}`,
-        tone: 'pending',
-        detail: 'Evaluating requirement checks — step forward to resolve.',
-      }
-    case 'propagation_resolved': {
-      const target = name(event.target_id)
-      const source = name(event.source_id)
-      if (event.outcome === 'succeeded') {
-        return { headline: `Succeeded: ${target} compromised`, tone: 'succeeded', detail: `${source} → ${target}.` }
-      }
-      const reason = reasonPhrase(primaryCheck(event.checks))
-      return event.outcome === 'blocked'
-        ? { headline: `Blocked: ${reason}`, tone: 'blocked', detail: `${source} → ${target}.` }
-        : { headline: `Indeterminate: ${reason}`, tone: 'indeterminate', detail: `${source} → ${target}.` }
-    }
-    case 'propagation_skipped':
-      return {
-        headline: `Skipped ${name(event.source_id)} → ${name(event.target_id)}`,
-        tone: 'neutral',
-        detail: 'Target already compromised.',
-      }
-    case 'run_completed':
-      return { headline: `Run complete — ${event.compromised_ids.length} hosts compromised`, tone: 'neutral' }
-    case 'run_aborted':
-      return { headline: `Run aborted (${event.error_code})`, tone: 'neutral' }
-  }
-}
-
-export function explainAttempt(attempt: AttemptView, compiled: CompiledScenario | null): EventExplanation {
-  const source = displayName(compiled, attempt.source_id)
-  const target = displayName(compiled, attempt.target_id)
-  if (attempt.status === 'pending') {
-    return { headline: `Attempting ${source} → ${target}`, tone: 'pending', detail: 'Evaluating requirement checks.' }
-  }
-  if (attempt.status === 'succeeded') {
-    return { headline: `Succeeded: ${target} compromised`, tone: 'succeeded', detail: `${source} → ${target}.` }
-  }
-  const reason = reasonPhrase(primaryCheck(attempt.checks))
-  return attempt.status === 'blocked'
-    ? { headline: `Blocked: ${reason}`, tone: 'blocked', detail: `${source} → ${target}.` }
-    : { headline: `Indeterminate: ${reason}`, tone: 'indeterminate', detail: `${source} → ${target}.` }
+export function stepRange(step: Step): string {
+  return step.end - step.start === 1 ? `seq ${step.start}` : `seq ${step.start}–${step.end - 1}`
 }
 
 export function assetById(compiled: CompiledScenario, id: string): Asset | undefined {
   return compiled.effective.network.assets.find((asset) => asset.id === id)
-}
-
-export function linkById(compiled: CompiledScenario, id: string): Link | undefined {
-  return compiled.effective.network.links.find((link) => link.id === id)
-}
-
-export function capabilityById(compiled: CompiledScenario, id: string): Capability | undefined {
-  return compiled.effective.profile.capabilities.find((capability) => capability.id === id)
 }
 
 export function displayName(compiled: CompiledScenario | null, id: string): string {
@@ -259,34 +57,51 @@ export function displayName(compiled: CompiledScenario | null, id: string): stri
   return label !== undefined && label !== '' ? label : id
 }
 
-export function attemptResolvedEvent(run: RunResult, id: string): PropagationResolvedEvent | null {
-  for (const event of run.events) {
-    if (event.type === 'propagation_resolved' && event.attempt_id === id) return event
-  }
+export function hostStatus(replay: ReplayState, id: string): HostStatus {
+  if (replay.compromised.includes(id)) return 'compromised'
+  const attempts = Object.values(replay.attempts).filter((attempt) => attempt.target_id === id)
+  if (attempts.some((attempt) => attempt.status === 'indeterminate')) return 'unknown'
+  if (attempts.some((attempt) => attempt.status === 'blocked')) return 'blocked'
   return null
 }
 
-export function attemptStaticInfo(
-  run: RunResult,
-  id: string,
-): { source_id: string; target_id: string; link_id: string; capability_id: string } | null {
-  for (const event of run.events) {
-    if ((event.type === 'propagation_attempted' || event.type === 'propagation_resolved') && event.attempt_id === id) {
-      return {
-        source_id: event.source_id,
-        target_id: event.target_id,
-        link_id: event.link_id,
-        capability_id: event.capability_id,
-      }
+export function latestAttemptByLink(replay: ReplayState): ReadonlyMap<string, AttemptView> {
+  const byLink = new Map<string, AttemptView>()
+  for (const attempt of Object.values(replay.attempts)) {
+    const existing = byLink.get(attempt.link_id)
+    if (existing === undefined || (existing.status !== 'succeeded' && attempt.attempt_id > existing.attempt_id)) {
+      byLink.set(attempt.link_id, attempt)
     }
   }
-  return null
+  return byLink
 }
 
-export function attemptIdForLink(run: RunResult, linkId: string): string | null {
-  let id: string | null = null
-  for (const event of run.events) {
-    if (event.type === 'propagation_attempted' && event.link_id === linkId) id = event.attempt_id
+export function routeState(attempt: AttemptView | undefined): RouteState {
+  return attempt === undefined ? 'untried' : attempt.status
+}
+
+export function metrics(compiled: CompiledScenario, replay: ReplayState): Metrics {
+  const total = compiled.effective.network.assets.length
+  const attempts = Object.values(replay.attempts)
+  return {
+    total,
+    compromised: replay.compromised.length,
+    blocked: attempts.filter((attempt) => attempt.status === 'blocked').length,
+    unknown: attempts.filter((attempt) => attempt.status === 'indeterminate').length,
+    blastRadius: total === 0 ? 0 : replay.compromised.length / total,
   }
-  return id
+}
+
+export function percent(ratio: number): string {
+  return `${Number((ratio * 100).toFixed(1))}%`
+}
+
+export function resolvedAttemptsOn(
+  events: readonly SimulationEvent[],
+  cursor: number,
+  hostId: string,
+): PropagationResolvedEvent[] {
+  return events
+    .slice(0, cursor)
+    .filter((event): event is PropagationResolvedEvent => event.type === 'propagation_resolved' && event.target_id === hostId)
 }

@@ -25,6 +25,22 @@ import {
   type DecidingStatus,
   type ReasonTemplate,
 } from './templates'
+import { capabilityChip, checkName, joinList } from './describe'
+
+/**
+ * The parts of an attempt step's body, for layouts that place them separately.
+ * `body` is always `[lead, ...result, ...stop.sentences, note]` joined by spaces.
+ */
+export type NarrationParts = {
+  /** Skipped-link sentences and the "<source> tries <target>" sentence. */
+  readonly lead: string
+  /** For a success: what held and the consequence. */
+  readonly result: readonly string[]
+  /** For a blocked or indeterminate attempt: the deciding check and why it stopped the attempt. */
+  readonly stop?: { readonly check: Check; readonly sentences: readonly string[] }
+  /** For a blocked or indeterminate attempt: what this does and doesn't mean. */
+  readonly note?: string
+}
 
 export type Narration = {
   /** Headline only, e.g. "Blocked at WS-03". The step number is shown separately. */
@@ -34,6 +50,10 @@ export type Narration = {
   readonly body: string
   /** The evidence claim behind the attempt's capability, when there is one. */
   readonly why?: string
+  /** A short line under the title once the step is reached, e.g. "Network path denied". */
+  readonly subtitle?: string
+  /** Attempt steps only: the body split into its parts. */
+  readonly parts?: NarrationParts
 }
 
 type Vars = Readonly<Record<string, string | undefined>>
@@ -81,8 +101,17 @@ class NarrationContext {
     const started = this.range.find((event) => event.type === 'run_started')
     const vars = { seed: this.label(started?.initial_asset_id ?? this.scenario.effective.initial_asset_id) }
     const recorded = this.range.some((event) => event.type === 'asset_compromised' && event.parent_id === null)
-    const text = recorded ? STEP_TEXT.seed : STEP_TEXT.seedUnrecorded
-    return { title: fill(text.title, vars), preview: fill(text.preview, vars), body: fill(text.body, vars) }
+    if (!recorded) {
+      const text = STEP_TEXT.seedUnrecorded
+      return { title: fill(text.title, vars), preview: fill(text.preview, vars), body: fill(text.body, vars) }
+    }
+    const text = STEP_TEXT.seed
+    return {
+      title: fill(text.title, vars),
+      preview: fill(text.preview, vars),
+      body: fill(text.body, vars),
+      subtitle: text.subtitle,
+    }
   }
 
   attempt(): Narration {
@@ -100,13 +129,12 @@ class NarrationContext {
     const mention = this.capabilityMention(attempted)
 
     const preview = fill(this.hasAlternatives(attempted) ? STEP_TEXT.attempt.previewWithCapability : STEP_TEXT.attempt.preview, vars)
-    const sentences = [...this.skipSentences(), fill(this.lead(attempted, mention.same), vars)]
+    const lead = [...this.skipSentences(), fill(this.lead(attempted, mention.same), vars)].join(' ')
     // The evidence claim is shown once, on the first step that uses this capability.
     const why = mention.firstUse ? this.why(resolved?.evidence_ids ?? capability?.evidence_ids ?? []) : undefined
 
     if (resolved === undefined) {
-      sentences.push(STEP_TEXT.unresolved.consequence)
-      return withWhy({ title: fill(STEP_TEXT.unresolved.title, vars), preview, body: sentences.join(' ') }, why)
+      return withParts(fill(STEP_TEXT.unresolved.title, vars), preview, { lead, result: [STEP_TEXT.unresolved.consequence] }, why)
     }
 
     if (resolved.outcome === 'succeeded') {
@@ -115,16 +143,20 @@ class NarrationContext {
         capability?.mechanism === 'remote_execution'
           ? STEP_TEXT.succeeded.requirementsExecution
           : STEP_TEXT.succeeded.requirementsExploit
-      sentences.push(fill(requirements, { ...vars, ...(credential ? checkVars(credential) : {}) }))
-      sentences.push(fill(STEP_TEXT.succeeded.consequence, vars))
-      return withWhy({ title: fill(STEP_TEXT.succeeded.title, vars), preview, body: sentences.join(' ') }, why)
+      const result = [
+        fill(requirements, { ...vars, ...(credential ? checkVars(credential) : {}) }),
+        fill(STEP_TEXT.succeeded.consequence, vars),
+      ]
+      const subtitle = capability === undefined ? undefined : fill(STEP_TEXT.succeeded.subtitle, { ...vars, chip: capabilityChip(capability) })
+      return withParts(fill(STEP_TEXT.succeeded.title, vars), preview, { lead, result }, why, subtitle)
     }
 
     const blocked = resolved.outcome === 'blocked'
     const text = blocked ? STEP_TEXT.blocked : STEP_TEXT.indeterminate
     const deciding = primaryCheck(resolved.checks)
+    let stop: NarrationParts['stop']
     if (deciding !== undefined) {
-      sentences.push(fill(reasonTemplate(deciding).because, { ...vars, ...checkVars(deciding) }))
+      const sentences = [fill(reasonTemplate(deciding).because, { ...vars, ...checkVars(deciding) })]
       const intervention = this.interventionPhrase(deciding.intervention_ids ?? [])
       if (intervention !== undefined) sentences.push(fill(text.intervention, { intervention }))
       const others = resolved.checks.filter((check) => check !== deciding && check.status !== 'pass')
@@ -135,15 +167,18 @@ class NarrationContext {
       if (deciding.status === 'fail' && resolved.checks.some((check) => check.status === 'unknown')) {
         sentences.push(STEP_TEXT.failOutweighsUnknown)
       }
+      stop = { check: deciding, sentences }
     }
+    let note: string
     if (!blocked) {
-      sentences.push(fill(STEP_TEXT.indeterminate.consequence, vars))
+      note = fill(STEP_TEXT.indeterminate.consequence, vars)
     } else if (resolved.checks.some((check) => check.code === 'TARGET_NOT_ISOLATED' && check.status === 'fail')) {
-      sentences.push(fill(STEP_TEXT.blocked.consequenceUnreachable, vars))
+      note = fill(STEP_TEXT.blocked.consequenceUnreachable, vars)
     } else {
-      sentences.push(...this.whatElseCanTry(attempted, vars))
+      note = this.whatElseCanTry(attempted, vars).join(' ')
     }
-    return withWhy({ title: fill(text.title, vars), preview, body: sentences.join(' ') }, why)
+    const subtitle = deciding === undefined ? undefined : checkName(deciding)
+    return withParts(fill(text.title, vars), preview, { lead, result: [], ...(stop ? { stop } : {}), note }, why, subtitle)
   }
 
   summary(): Narration {
@@ -174,7 +209,12 @@ class NarrationContext {
     ]
     if (indeterminate.length > 0) sentences.push(fill(STEP_TEXT.summary.indeterminate, this.hostsVars(indeterminate)))
 
-    return { title: fill(STEP_TEXT.summary.title, vars), preview: STEP_TEXT.summary.preview, body: sentences.join(' ') }
+    return {
+      title: fill(STEP_TEXT.summary.title, vars),
+      preview: STEP_TEXT.summary.preview,
+      body: sentences.join(' '),
+      subtitle: STEP_TEXT.summary.subtitle,
+    }
   }
 
   aborted(): Narration {
@@ -187,7 +227,12 @@ class NarrationContext {
       sentences.push(fill(STEP_TEXT.aborted.pendingTarget, { target: this.label(pending.asset_id) }))
     }
     sentences.push(fill(STEP_TEXT.aborted.partial, this.resultVars(state.compromised)))
-    return { title: STEP_TEXT.aborted.title, preview: STEP_TEXT.aborted.preview, body: sentences.join(' ') }
+    return {
+      title: STEP_TEXT.aborted.title,
+      preview: STEP_TEXT.aborted.preview,
+      body: sentences.join(' '),
+      subtitle: STEP_TEXT.aborted.subtitle,
+    }
   }
 
   private label(id: string): string {
@@ -259,13 +304,26 @@ class NarrationContext {
         entry.id !== attempted.link_id &&
         capabilities.some((capability) => capability.service_id === entry.service_id),
     )
+    // Another link only matters if its source is (or becomes) compromised and
+    // the link has not been tried yet. Read from the replay state at this step,
+    // so nothing later in the run is revealed.
+    const state = seekReplay(this.events, this.step.end)
+    const compromised = new Set(state.compromised)
+    const tried = new Set(Object.values(state.attempts).map((attempt) => attempt.link_id))
+    const sourcesOf = (entries: typeof others) => [...new Set(entries.map((entry) => this.label(entry.source_id)))]
+    const waiting = sourcesOf(others.filter((entry) => !compromised.has(entry.source_id)))
+    const pending = sourcesOf(others.filter((entry) => compromised.has(entry.source_id) && !tried.has(entry.id)))
+
     const sentences: string[] = []
     if (moreOnLink) sentences.push(fill(STEP_TEXT.blocked.moreOptionsOnLink, vars))
-    if (others.length > 0) {
-      const sources = joinList([...new Set(others.map((entry) => this.label(entry.source_id)))])
-      sentences.push(fill(STEP_TEXT.blocked.otherLinks, { ...vars, sources }))
-    } else if (!moreOnLink) {
-      sentences.push(fill(STEP_TEXT.blocked.noOtherLinks, vars))
+    if (pending.length > 0) sentences.push(fill(STEP_TEXT.blocked.otherLinksPending, { ...vars, sources: joinList(pending) }))
+    if (waiting.length > 0) {
+      const is = waiting.length === 1 ? 'is' : 'are'
+      sentences.push(fill(STEP_TEXT.blocked.otherLinks, { ...vars, sources: joinList(waiting, 'or'), is }))
+    }
+    if (others.length === 0 && !moreOnLink) sentences.push(fill(STEP_TEXT.blocked.noOtherLinks, vars))
+    else if (others.length > 0 && pending.length === 0 && waiting.length === 0 && !moreOnLink) {
+      sentences.push(fill(STEP_TEXT.blocked.otherLinksExhausted, vars))
     }
     return sentences
   }
@@ -378,10 +436,16 @@ function withWhy(narration: Omit<Narration, 'why'>, why: string | undefined): Na
   return why === undefined ? narration : { ...narration, why }
 }
 
-/** "a", "a and b", "a, b and c". */
-function joinList(items: readonly string[], conjunction = 'and'): string {
-  if (items.length <= 1) return items[0] ?? ''
-  return `${items.slice(0, -1).join(', ')} ${conjunction} ${items.at(-1)}`
+/** An attempt narration whose body is assembled from its parts. */
+function withParts(
+  title: string,
+  preview: string,
+  parts: NarrationParts,
+  why: string | undefined,
+  subtitle?: string,
+): Narration {
+  const body = [parts.lead, ...parts.result, ...(parts.stop?.sentences ?? []), ...(parts.note ? [parts.note] : [])].join(' ')
+  return withWhy({ title, preview, body, parts, ...(subtitle === undefined ? {} : { subtitle }) }, why)
 }
 
 /** 0.6 → "60%", 1/3 → "33.3%". */

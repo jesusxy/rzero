@@ -1,327 +1,478 @@
-import { createMemo, createSignal, For, Show } from 'solid-js'
-import type { Asset } from '../core'
-import type { GridPosition } from '../app/layout'
-import type { AssetViewState, LinkViewState, StaticMapAsset, StaticMapLink } from '../app/view'
+import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import type { AttemptView, Capability } from '../core'
+import type { SimulationStore } from '../app/store'
+import { blockTag, capabilityChip, platformName, primaryCheck } from '../app/narration'
+import {
+  bounds,
+  districts,
+  expand,
+  gridLines,
+  labelSide,
+  nodeShape,
+  pointAt,
+  routeGeometry,
+  splitAt,
+  toPoints,
+  trimEnd,
+  type Point,
+  type RouteGeometry,
+} from '../app/scene'
+import { hostStatus, latestAttemptByLink, routeState, type HostStatus, type RouteState } from '../app/view'
+import { FitIcon, MinusIcon, PlusIcon } from './icons'
 
-type MapStageProps = {
-  assets: readonly StaticMapAsset[]
-  links: readonly StaticMapLink[]
-  stateOf: (id: string) => AssetViewState
-  assetSelected: (id: string) => boolean
-  linkStateOf: (id: string) => LinkViewState
-  linkSelected: (id: string) => boolean
-  hasRun: boolean
-  onSelectAsset: (id: string) => void
-  onSelectLink: (id: string) => void
+type View = { x: number; y: number; w: number; h: number }
+
+const STATUS_WORDS: Record<Exclude<HostStatus, null>, string> = {
+  compromised: 'Compromised',
+  blocked: 'Attempt blocked',
+  unknown: 'Unknown',
 }
 
-type ScreenPoint = { x: number; y: number }
-type BlockDimensions = { width: number; depth: number; height: number }
-type ViewBox = { x: number; y: number; w: number; h: number }
+const BARRIER_AT = 0.7
+const CHIP_REST = { blocked: 0.32, other: 0.5 }
 
-const boardSize = 30
-const projection = { originX: 50, originY: 8, tileX: 1.55, tileY: 1.02 }
+export function MapStage(props: { store: SimulationStore }) {
+  const store = props.store
+  const command = () => store.mode() === 'command'
 
-const blockDimensions: Record<Asset['kind'], BlockDimensions> = {
-  workstation: { width: 3, depth: 3, height: 4.2 },
-  server: { width: 3.4, depth: 3.4, height: 6.4 },
-  controller: { width: 4, depth: 4, height: 7 },
-  appliance: { width: 3.1, depth: 3.1, height: 5 },
-  other: { width: 2.8, depth: 2.8, height: 4 },
-}
-
-const gridStep = 2
-const gridLines = Array.from({ length: Math.floor(boardSize / gridStep) + 1 }, (_, i) => i * gridStep)
-
-function project(point: GridPosition): ScreenPoint {
-  return {
-    x: projection.originX + (point.x - point.y) * projection.tileX,
-    y: projection.originY + (point.x + point.y) * projection.tileY,
-  }
-}
-function points(pts: ScreenPoint[]): string {
-  return pts.map((p) => `${p.x},${p.y}`).join(' ')
-}
-function projectedPoints(pts: GridPosition[]): string {
-  return points(pts.map(project))
-}
-function lerp(a: ScreenPoint, b: ScreenPoint, t: number): ScreenPoint {
-  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
-}
-
-function blockFaces(asset: StaticMapAsset) {
-  const size = blockDimensions[asset.kind]
-  const hw = size.width / 2
-  const hd = size.depth / 2
-  const { x, y } = asset.position
-  const gTop = project({ x: x - hw, y: y - hd })
-  const gRight = project({ x: x + hw, y: y - hd })
-  const gBottom = project({ x: x + hw, y: y + hd })
-  const gLeft = project({ x: x - hw, y: y + hd })
-  const center = project(asset.position)
-  const up = (p: ScreenPoint): ScreenPoint => ({ x: p.x, y: p.y - size.height })
-  const rTop = up(gTop)
-  const rRight = up(gRight)
-  const rBottom = up(gBottom)
-  const rLeft = up(gLeft)
-  return {
-    top: points([rTop, rRight, rBottom, rLeft]),
-    left: points([gLeft, gBottom, rBottom, rLeft]),
-    right: points([gBottom, gRight, rRight, rBottom]),
-    roof: { x: center.x, y: center.y - size.height },
-    g: { top: gTop, right: gRight, bottom: gBottom, left: gLeft },
-    r: { top: rTop, right: rRight, bottom: rBottom, left: rLeft },
-  }
-}
-
-function decorations(asset: StaticMapAsset, faces: ReturnType<typeof blockFaces>) {
-  if (asset.kind === 'server') {
-    return [0.28, 0.5, 0.72].map((t) =>
-      points([lerp(faces.g.bottom, faces.r.bottom, t), lerp(faces.g.right, faces.r.right, t)]),
-    )
-  }
-  return []
-}
-
-function edgeGeometry(link: StaticMapLink) {
-  const pathGrid = [link.from, ...link.waypoints, link.to]
-  const pathScreen = pathGrid.map(project)
-  const first = pathScreen[0]!
-  const second = pathScreen[1]!
-  const last = pathScreen[pathScreen.length - 1]!
-  const prev = pathScreen[pathScreen.length - 2]!
-  const unit = (a: ScreenPoint, b: ScreenPoint) => {
-    const dx = b.x - a.x
-    const dy = b.y - a.y
-    const len = Math.hypot(dx, dy) || 1
-    return { x: dx / len, y: dy / len }
-  }
-  const trim = 2.7
-  const headDir = unit(prev, last)
-  const startDir = unit(first, second)
-  const start: ScreenPoint = { x: first.x + startDir.x * trim, y: first.y + startDir.y * trim }
-  const tip: ScreenPoint = { x: last.x - headDir.x * trim, y: last.y - headDir.y * trim }
-  const linePts = [start, ...pathScreen.slice(1, -1), tip]
-  const arrowLength = 2
-  const arrowHalf = 1.1
-  const back: ScreenPoint = { x: tip.x - headDir.x * arrowLength, y: tip.y - headDir.y * arrowLength }
-  const perp = { x: -headDir.y, y: headDir.x }
-  const head = points([
-    tip,
-    { x: back.x + perp.x * arrowHalf, y: back.y + perp.y * arrowHalf },
-    { x: back.x - perp.x * arrowHalf, y: back.y - perp.y * arrowHalf },
-  ])
-  let total = 0
-  for (let i = 1; i < linePts.length; i += 1) total += Math.hypot(linePts[i]!.x - linePts[i - 1]!.x, linePts[i]!.y - linePts[i - 1]!.y)
-  let acc = 0
-  let mid = linePts[0]!
-  let midDir = headDir
-  for (let i = 1; i < linePts.length; i += 1) {
-    const seg = Math.hypot(linePts[i]!.x - linePts[i - 1]!.x, linePts[i]!.y - linePts[i - 1]!.y)
-    if (acc + seg >= total / 2) {
-      const t = (total / 2 - acc) / (seg || 1)
-      mid = lerp(linePts[i - 1]!, linePts[i]!, t)
-      midDir = unit(linePts[i - 1]!, linePts[i]!)
-      break
-    }
-    acc += seg
-  }
-  const midPerp = { x: -midDir.y, y: midDir.x }
-  const chevron = points([
-    { x: mid.x - midDir.x * 0.9 + midPerp.x * 0.9, y: mid.y - midDir.y * 0.9 + midPerp.y * 0.9 },
-    { x: mid.x + midDir.x * 0.6, y: mid.y + midDir.y * 0.6 },
-    { x: mid.x - midDir.x * 0.9 - midPerp.x * 0.9, y: mid.y - midDir.y * 0.9 - midPerp.y * 0.9 },
-  ])
-  return { line: points(linePts), head, chevron, mid, midPerp }
-}
-
-function sceneBounds(assets: readonly StaticMapAsset[]): ViewBox {
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-  for (const asset of assets) {
-    const f = blockFaces(asset)
-    for (const p of [f.g.top, f.g.right, f.g.bottom, f.g.left, f.r.top, f.r.right, f.r.bottom, f.r.left, f.roof]) {
-      minX = Math.min(minX, p.x)
-      minY = Math.min(minY, p.y)
-      maxX = Math.max(maxX, p.x)
-      maxY = Math.max(maxY, p.y)
-    }
-  }
-  if (!Number.isFinite(minX)) return { x: 0, y: 0, w: 100, h: 72 }
-  const pad = 11
-  return { x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 }
-}
-
-export function MapStage(props: MapStageProps) {
-  let svgRef: SVGSVGElement | undefined
-  const ordered = createMemo(() => [...props.assets].sort((a, b) => project(a.position).y - project(b.position).y))
-  const bounds = createMemo(() => sceneBounds(props.assets))
-
-  const [view, setView] = createSignal<ViewBox>(sceneBounds(props.assets))
-  const viewBox = () => {
-    const v = view()
-    return `${v.x} ${v.y} ${v.w} ${v.h}`
-  }
-  const zoomBy = (factor: number) =>
-    setView((v) => {
-      const base = bounds()
-      const nw = Math.max(base.w * 0.25, Math.min(v.w * factor, base.w * 3))
-      const nh = v.h * (nw / v.w)
-      return { x: v.x + (v.w - nw) / 2, y: v.y + (v.h - nh) / 2, w: nw, h: nh }
+  const scene = createMemo(() => {
+    const compiled = store.compiled()
+    if (compiled === null) return null
+    const layout = store.layout()
+    const network = compiled.effective.network
+    const shapes = new Map(network.assets.map((asset) => [asset.id, nodeShape(asset, layout.get(asset.id) ?? { x: 15, y: 15 })]))
+    const routes = network.links.flatMap((link) => {
+      const route = routeGeometry(link, shapes)
+      return route === null ? [] : [route]
     })
-  const fit = () => setView(bounds())
+    const areas = districts(network.assets, layout, network.segments)
+    const box = bounds([...[...shapes.values()].flatMap((shape) => shape.hull), ...areas.map((area) => area.labelAt)])
+    return {
+      assets: [...network.assets].sort((a, b) => shapes.get(a.id)!.anchor.y - shapes.get(b.id)!.anchor.y),
+      shapes,
+      routes,
+      areas,
+      grid: gridLines(layout),
+      sides: new Map(network.assets.map((asset) => [asset.id, labelSide(asset.id, shapes.get(asset.id)!.anchor, routes)])),
+      compactSides: new Map(
+        network.assets.map((asset) => [asset.id, labelSide(asset.id, shapes.get(asset.id)!.anchor, routes, ['bottom', 'top'])]),
+      ),
+      capabilities: new Map(compiled.effective.profile.capabilities.map((capability) => [capability.id, capability])),
+      seed: compiled.effective.initial_asset_id,
+      box,
+      longestName: Math.max(...network.assets.map((asset) => asset.label.length)),
+      longestId: Math.max(...network.assets.map((asset) => asset.id.length)),
+    }
+  })
 
-  let drag: { px: number; py: number; view: ViewBox } | null = null
+  const [size, setSize] = createSignal({ w: 800, h: 520 })
+  const compact = () => size().w < 520
+  const sideOf = (id: string) => (compact() ? scene()!.compactSides.get(id)! : scene()!.sides.get(id)!)
+
+  const fitFor = (w: number, h: number): View => {
+    const sc = scene()
+    if (sc === null || w <= 0 || h <= 0) return { x: 0, y: 0, w: 100, h: 70 }
+    const { box } = sc
+    const cw = box.maxX - box.minX
+    const ch = box.maxY - box.minY
+    const statusW = 15 * (compact() ? 6.6 : 7.3)
+    const subW = compact() ? 0 : ('Windows · start'.length + (command() ? sc.longestId + 3 : 0)) * 6.6
+    const nameW = sc.longestName * (compact() ? 6.9 : 7.8)
+    const labelW = Math.max(statusW, subW, nameW)
+    const labelH = compact() ? 30 : 48
+    let scale = Math.min(w / cw, h / ch)
+    let need = { left: 0, right: 0, top: 0, bottom: 0 }
+    for (let i = 0; i < 4; i += 1) {
+      need = { left: 0, right: 0, top: 0, bottom: 0 }
+      for (const asset of sc.assets) {
+        const shape = sc.shapes.get(asset.id)!
+        const hull = bounds(shape.hull)
+        const ax = (shape.anchor.x - box.minX) * scale
+        const ay = (shape.anchor.y - box.minY) * scale
+        const halfW = ((hull.maxX - hull.minX) / 2) * scale + 16
+        const halfH = ((hull.maxY - hull.minY) / 2) * scale + 12
+        const side = sideOf(asset.id)
+        const rect =
+          side === 'right'
+            ? { l: ax + halfW, r: ax + halfW + labelW, t: ay - labelH / 2, b: ay + labelH / 2 }
+            : side === 'left'
+              ? { l: ax - halfW - labelW, r: ax - halfW, t: ay - labelH / 2, b: ay + labelH / 2 }
+              : side === 'top'
+                ? { l: ax - labelW / 2, r: ax + labelW / 2, t: ay - halfH - labelH, b: ay - halfH }
+                : { l: ax - labelW / 2, r: ax + labelW / 2, t: ay + halfH, b: ay + halfH + labelH }
+        need = {
+          left: Math.max(need.left, -rect.l),
+          right: Math.max(need.right, rect.r - cw * scale),
+          top: Math.max(need.top, -rect.t),
+          bottom: Math.max(need.bottom, rect.b - ch * scale),
+        }
+      }
+      scale = Math.max(0.5, Math.min((w - need.left - need.right - 16) / cw, (h - need.top - need.bottom - 16) / ch))
+    }
+    const vw = w / scale
+    const vh = h / scale
+    const usedW = cw + (need.left + need.right) / scale
+    const usedH = ch + (need.top + need.bottom) / scale
+    return {
+      x: box.minX - need.left / scale - (vw - usedW) / 2,
+      y: box.minY - need.top / scale - (vh - usedH) / 2,
+      w: vw,
+      h: vh,
+    }
+  }
+
+  const [view, setView] = createSignal<View>(fitFor(800, 520))
+  let cameraMoved = false
+  let wrap: HTMLDivElement | undefined
+
+  onMount(() => {
+    if (wrap === undefined) return
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return
+      setSize({ w: entry.contentRect.width, h: entry.contentRect.height })
+      if (!cameraMoved) setView(fitFor(entry.contentRect.width, entry.contentRect.height))
+    })
+    observer.observe(wrap)
+    onCleanup(() => observer.disconnect())
+  })
+
+  const transform = createMemo(() => {
+    const v = view()
+    const s = size()
+    const scale = Math.min(s.w / v.w, s.h / v.h) || 1
+    return { v, scale, offX: (s.w - v.w * scale) / 2, offY: (s.h - v.h * scale) / 2 }
+  })
+  const px = (n: number) => n / transform().scale
+  const toScreen = (p: Point) => {
+    const t = transform()
+    return { x: (p.x - t.v.x) * t.scale + t.offX, y: (p.y - t.v.y) * t.scale + t.offY }
+  }
+
+  const zoomBy = (factor: number) => {
+    cameraMoved = true
+    setView((v) => {
+      const fit = fitFor(size().w, size().h)
+      const w = Math.max(fit.w * 0.3, Math.min(v.w * factor, fit.w * 3))
+      const h = v.h * (w / v.w)
+      return { x: v.x + (v.w - w) / 2, y: v.y + (v.h - h) / 2, w, h }
+    })
+  }
+  const fit = () => {
+    cameraMoved = false
+    setView(fitFor(size().w, size().h))
+  }
+
+  let drag: { x: number; y: number; view: View } | null = null
   const onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return
-    drag = { px: event.clientX, py: event.clientY, view: view() }
+    drag = { x: event.clientX, y: event.clientY, view: view() }
+    cameraMoved = true
     ;(event.currentTarget as Element).setPointerCapture(event.pointerId)
     event.preventDefault()
   }
   const onPointerMove = (event: PointerEvent) => {
-    if (drag === null || svgRef === undefined) return
-    const rect = svgRef.getBoundingClientRect()
-    const dx = ((event.clientX - drag.px) * drag.view.w) / rect.width
-    const dy = ((event.clientY - drag.py) * drag.view.h) / rect.height
-    setView({ ...drag.view, x: drag.view.x - dx, y: drag.view.y - dy })
+    if (drag === null) return
+    const scale = transform().scale
+    setView({ ...drag.view, x: drag.view.x - (event.clientX - drag.x) / scale, y: drag.view.y - (event.clientY - drag.y) / scale })
   }
   const endDrag = (event: PointerEvent) => {
     drag = null
     ;(event.currentTarget as Element).releasePointerCapture?.(event.pointerId)
   }
 
-  const keyActivate = (event: KeyboardEvent, action: () => void) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      action()
+  const ledger = createMemo(() => latestAttemptByLink(store.replay()))
+  const currentStep = createMemo(() => store.steps()[store.stepIndex()] ?? null)
+  const currentAttempt = createMemo<AttemptView | null>(() => {
+    const step = currentStep()
+    if (step?.kind !== 'attempt' || step.attempt_id === undefined) return null
+    return store.replay().attempts[step.attempt_id] ?? null
+  })
+  const currentTarget = () => {
+    const step = currentStep()
+    return step?.kind === 'attempt' ? (step.target_id ?? null) : null
+  }
+  const upcomingOutcome = (attemptId: string) => {
+    for (const event of store.run()?.events ?? []) {
+      if (event.type === 'propagation_resolved' && event.attempt_id === attemptId) return event.outcome
+    }
+    return undefined
+  }
+  const flowing = () => store.playing() && !store.reducedMotion()
+
+  type RouteView = {
+    state: RouteState
+    current: boolean
+    attempt: AttemptView | undefined
+    capability: Capability | undefined
+  }
+  const routeView = (route: RouteGeometry): RouteView => {
+    const current = currentAttempt()
+    const isCurrent = current !== null && current.link_id === route.linkId
+    const attempt = isCurrent ? current : ledger().get(route.linkId)
+    return {
+      state: isCurrent ? current.status : routeState(attempt),
+      current: isCurrent,
+      attempt,
+      capability: attempt === undefined ? undefined : scene()?.capabilities.get(attempt.capability_id),
     }
   }
 
+  const stroke = (width: number, dash?: [number, number]) => ({
+    'stroke-width': `${px(width)}`,
+    ...(dash ? { 'stroke-dasharray': `${px(dash[0])} ${px(dash[1])}`, '--dash-cycle': `${-px(dash[0] + dash[1])}` } : {}),
+  })
+  const arrowhead = (points: readonly Point[]) => {
+    const tip = points[points.length - 1]!
+    const prev = points[points.length - 2] ?? tip
+    const len = Math.hypot(tip.x - prev.x, tip.y - prev.y) || 1
+    const dir = { x: (tip.x - prev.x) / len, y: (tip.y - prev.y) / len }
+    const back = { x: tip.x - dir.x * px(10), y: tip.y - dir.y * px(10) }
+    const half = px(4.5)
+    return toPoints([tip, { x: back.x - dir.y * half, y: back.y + dir.x * half }, { x: back.x + dir.y * half, y: back.y - dir.x * half }])
+  }
+  const barrier = (route: RouteGeometry) => {
+    const { point, direction } = pointAt(route.points, BARRIER_AT)
+    const half = px(8)
+    return toPoints([
+      { x: point.x - direction.y * half, y: point.y + direction.x * half },
+      { x: point.x + direction.y * half, y: point.y - direction.x * half },
+    ])
+  }
+  const tagStyle = (route: RouteGeometry) => {
+    const { point, direction } = pointAt(route.points, BARRIER_AT)
+    const p = toScreen(point)
+    const side = { x: -direction.y, y: direction.x }
+    const normal = side.y >= 0 ? side : { x: -side.x, y: -side.y }
+    return { left: `${p.x + normal.x * 26}px`, top: `${p.y + normal.y * 26}px` }
+  }
+  const chipFraction = (rv: RouteView) => {
+    if (rv.state === 'pending') {
+      const outcome = rv.attempt === undefined ? undefined : upcomingOutcome(rv.attempt.attempt_id)
+      return store.travel() * (outcome === 'blocked' ? CHIP_REST.blocked : CHIP_REST.other)
+    }
+    return rv.state === 'blocked' ? CHIP_REST.blocked : CHIP_REST.other
+  }
+
   return (
-    <section class="map-stage" aria-label="Network map">
-      <div class="map-toolbar" aria-label="Camera controls">
-        <button type="button" class="compact" aria-label="Zoom in" onClick={() => zoomBy(0.8)}>+</button>
-        <button type="button" class="compact" aria-label="Zoom out" onClick={() => zoomBy(1.25)}>−</button>
-        <button type="button" class="compact" aria-label="Fit network" title="Fit network" onClick={fit}>⤢</button>
-      </div>
-
-      <div class="network-map">
-        <svg
-          ref={svgRef}
-          class="network-scene"
-          viewBox={viewBox()}
-          role="img"
-          aria-label="Five-node lab network topology"
-        >
-          <rect
-            class="pan-surface"
-            x={view().x}
-            y={view().y}
-            width={view().w}
-            height={view().h}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={endDrag}
-            onPointerCancel={endDrag}
-          />
-
-          <defs>
-            <pattern id="block-hatch" width=".4" height=".4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-              <rect width="2" height="2" class="block-hatch-bg" />
-              <path d="M 0 0 V 2" class="block-hatch-line" />
-            </pattern>
-          </defs>
-
-          <g class="iso-grid" aria-hidden="true">
-            <For each={gridLines}>{(line) => (
-              <>
-                <polyline class="iso-grid-line" points={projectedPoints([{ x: line, y: 0 }, { x: line, y: boardSize }])} />
-                <polyline class="iso-grid-line" points={projectedPoints([{ x: 0, y: line }, { x: boardSize, y: line }])} />
-              </>
-            )}</For>
-          </g>
-
-          <g class="network-edges">
-            <For each={props.links}>{(link) => {
-              const geo = edgeGeometry(link)
-              const state = () => props.linkStateOf(link.id)
-              return (
-                <g
-                  class={`network-edge edge-${link.access} edge-state-${state()}`}
-                  classList={{ 'edge-selected': props.linkSelected(link.id) }}
-                  role="button"
-                  tabindex="0"
-                  aria-label={`Link ${link.source} to ${link.target} over ${link.service}, ${state() === 'none' ? link.access : state()}`}
-                  onClick={() => props.onSelectLink(link.id)}
-                  onKeyDown={(event) => keyActivate(event, () => props.onSelectLink(link.id))}
-                >
-                  <polyline class="edge-line" points={geo.line} />
-                  <polygon class="edge-head" points={geo.head} />
-                  <Show when={state() !== 'blocked' && state() !== 'indeterminate'}>
-                    <polyline class="edge-chevron" points={geo.chevron} />
-                  </Show>
-                  <Show when={state() === 'blocked'}>
-                    <polyline
-                      class="edge-stop"
-                      points={points([
-                        { x: geo.mid.x + geo.midPerp.x * 1.3, y: geo.mid.y + geo.midPerp.y * 1.3 },
-                        { x: geo.mid.x - geo.midPerp.x * 1.3, y: geo.mid.y - geo.midPerp.y * 1.3 },
-                      ])}
-                    />
-                  </Show>
-                  <Show when={state() === 'indeterminate'}>
-                    <text class="edge-badge" x={geo.mid.x} y={geo.mid.y - 1}>?</text>
-                  </Show>
+    <section class="map-card" aria-label="Network map">
+      <div class="map-wrap" classList={{ compact: compact() }} ref={(el) => (wrap = el)}>
+        <Show when={scene()}>
+          {(s) => (
+            <>
+              <svg class="map-svg" viewBox={`${view().x} ${view().y} ${view().w} ${view().h}`} role="img" aria-label="Isometric network map">
+                <rect
+                  class="pan-surface"
+                  x={view().x}
+                  y={view().y}
+                  width={view().w}
+                  height={view().h}
+                  onPointerDown={onPointerDown}
+                  onPointerMove={onPointerMove}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                />
+                <g class="grid" aria-hidden="true">
+                  <For each={s().grid}>{(line) => <polyline class="grid-line" points={toPoints(line)} />}</For>
                 </g>
-              )
-            }}</For>
-          </g>
+                <g class="districts" aria-hidden="true">
+                  <For each={s().areas}>
+                    {(area) => <polygon class="district" points={toPoints(area.polygon)} style={stroke(1, [5, 4])} />}
+                  </For>
+                </g>
+                <g class="nodes">
+                  <For each={s().assets}>
+                    {(asset) => {
+                      const shape = s().shapes.get(asset.id)!
+                      const status = () => hostStatus(store.replay(), asset.id)
+                      const isCurrent = () => currentTarget() === asset.id
+                      const isSelected = () => store.selectedHost() === asset.id
+                      return (
+                        <g
+                          class={`node node-${shape.silhouette}`}
+                          classList={{ compromised: status() === 'compromised', current: isCurrent(), selected: isSelected() }}
+                          role="button"
+                          tabindex="0"
+                          aria-pressed={isSelected()}
+                          aria-label={`${asset.label}, ${asset.kind}${status() ? `, ${STATUS_WORDS[status()!]}` : ''}`}
+                          onClick={() => store.selectHost(asset.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault()
+                              store.selectHost(asset.id)
+                            }
+                          }}
+                        >
+                          <For each={shape.faces}>{(face) => <polygon class={`face face-${face.kind}`} points={toPoints(face.points)} />}</For>
+                          <For each={shape.racks}>{(rack) => <polyline class="rack" points={toPoints(rack)} />}</For>
+                          <For each={shape.monitor}>
+                            {(face) => <polygon class={`monitor monitor-${face.kind}`} points={toPoints(face.points)} />}
+                          </For>
+                          <Show when={shape.screen.length > 0}>
+                            <polygon class="screen" points={toPoints(shape.screen)} />
+                          </Show>
+                          <Show when={isSelected()}>
+                            <polygon class="ring ring-selected" points={toPoints(expand(shape.hull, px(6)))} style={stroke(2)} />
+                          </Show>
+                          <Show when={isCurrent()}>
+                            <polygon class="ring ring-current" points={toPoints(expand(shape.hull, px(9)))} style={stroke(1.6, [5, 4])} />
+                          </Show>
+                        </g>
+                      )
+                    }}
+                  </For>
+                </g>
+                <g class="routes" aria-hidden="true">
+                  <For each={s().routes}>
+                    {(route) => {
+                      const rv = createMemo(() => routeView(route))
+                      return (
+                        <g class={`route route-${rv().state}`} classList={{ current: rv().current, flowing: rv().current && flowing() }}>
+                          <Switch>
+                            <Match when={rv().state === 'blocked'}>
+                              {(() => {
+                                const parts = () => splitAt(route.points, BARRIER_AT)
+                                return (
+                                  <>
+                                    <polyline
+                                      class="route-line before"
+                                      points={toPoints(parts()[0])}
+                                      style={rv().current ? stroke(2, [6, 4]) : stroke(1.25)}
+                                    />
+                                    <polyline class="route-line after" points={toPoints(parts()[1])} style={stroke(1.25, [3, 4])} />
+                                    <polyline class="barrier" points={barrier(route)} style={stroke(3.2)} />
+                                  </>
+                                )
+                              })()}
+                            </Match>
+                            <Match when={true}>
+                              <polyline
+                                class="route-line"
+                                points={toPoints(trimEnd(route.points, px(7)))}
+                                style={
+                                  rv().state === 'succeeded'
+                                    ? stroke(2.6)
+                                    : rv().state === 'pending'
+                                      ? stroke(2, [6, 4])
+                                      : rv().state === 'indeterminate'
+                                        ? stroke(2, [5, 4])
+                                        : stroke(1.25)
+                                }
+                              />
+                              <polygon class="arrowhead" points={arrowhead(route.points)} />
+                            </Match>
+                          </Switch>
+                        </g>
+                      )
+                    }}
+                  </For>
+                </g>
+              </svg>
 
-          <g class="network-nodes">
-            <For each={ordered()}>{(asset) => {
-              const faces = blockFaces(asset)
-              const racks = decorations(asset, faces)
-              const state = () => props.stateOf(asset.id)
-              return (
-                <g
-                  class="asset-block"
-                  classList={{
-                    'asset-modeled': state() === 'modeled',
-                    'asset-discovered': state() === 'discovered',
-                    'asset-compromised': state() === 'compromised',
-                    'asset-selected': props.assetSelected(asset.id),
-                    'asset-seed': asset.isSeed,
+              <div class="map-overlay" aria-hidden="true">
+                <For each={s().areas}>
+                  {(area) => (
+                    <span class="district-label" style={{ left: `${toScreen(area.labelAt).x}px`, top: `${toScreen(area.labelAt).y}px` }}>
+                      {area.label}
+                    </span>
+                  )}
+                </For>
+                <For each={s().assets}>
+                  {(asset) => {
+                    const shape = s().shapes.get(asset.id)!
+                    const side = () => sideOf(asset.id)
+                    const status = () => hostStatus(store.replay(), asset.id)
+                    const position = () => {
+                      const c = toScreen(shape.anchor)
+                      const b = bounds(shape.hull)
+                      const scale = transform().scale
+                      const halfW = ((b.maxX - b.minX) / 2) * scale + 16
+                      const halfH = ((b.maxY - b.minY) / 2) * scale + 12
+                      if (side() === 'right') return { left: `${c.x + halfW}px`, top: `${c.y}px` }
+                      if (side() === 'left') return { left: `${c.x - halfW}px`, top: `${c.y}px` }
+                      if (side() === 'top') return { left: `${c.x}px`, top: `${c.y - halfH}px` }
+                      return { left: `${c.x}px`, top: `${c.y + halfH}px` }
+                    }
+                    return (
+                      <div class={`node-label side-${side()}`} classList={{ selected: store.selectedHost() === asset.id }} style={position()}>
+                        <span class="nl-name">{asset.label}</span>
+                        <span class="nl-sub">
+                          {command() ? `${asset.id} · ` : ''}
+                          {platformName(asset.platform)}
+                          {asset.id === s().seed ? ' · start' : ''}
+                        </span>
+                        <Show when={status()}>
+                          {(st) => <span class={`nl-status status-${st()}`}>{STATUS_WORDS[st()]}</span>}
+                        </Show>
+                      </div>
+                    )
                   }}
-                  role="button"
-                  tabindex="0"
-                  aria-pressed={props.assetSelected(asset.id)}
-                  aria-label={`${asset.label} (${asset.id}), ${asset.kind}, ${state()}${asset.isSeed ? ', configured starting host' : ''}`}
-                  onClick={() => props.onSelectAsset(asset.id)}
-                  onKeyDown={(event) => keyActivate(event, () => props.onSelectAsset(asset.id))}
-                >
-                  <title>{`${asset.label} — ${asset.kind} — ${state()}`}</title>
-                  <polygon class="asset-face asset-face-left" points={faces.left} />
-                  <polygon class="asset-face asset-face-right" points={faces.right} />
-                  <polygon class="asset-face asset-face-top" points={faces.top} />
-                  <For each={racks}>{(line) => <polyline class="asset-rack" points={line} />}</For>
+                </For>
+                <For each={s().routes}>
+                  {(route) => {
+                    const rv = createMemo(() => routeView(route))
+                    const check = () => {
+                      const attempt = rv().attempt
+                      return attempt === undefined || attempt.status === 'pending' ? undefined : primaryCheck(attempt.checks)
+                    }
+                    const at = (fraction: number) => toScreen(pointAt(route.points, fraction).point)
+                    return (
+                      <>
+                        <Show when={rv().current && rv().capability}>
+                          {(capability) => (
+                            <span
+                              class="route-chip"
+                              style={{ left: `${at(chipFraction(rv())).x}px`, top: `${at(chipFraction(rv())).y}px` }}
+                            >
+                              {capabilityChip(capability())}
+                              {command() ? ` · ${route.linkId}` : ''}
+                            </span>
+                          )}
+                        </Show>
+                        <Show when={rv().state === 'blocked' && check()}>
+                          {(c) => (
+                            <span
+                              class="route-tag tag-blocked"
+                              classList={{ past: !rv().current }}
+                              style={tagStyle(route)}
+                            >
+                              ✕ {command() ? c().code : blockTag(c())}
+                            </span>
+                          )}
+                        </Show>
+                        <Show when={rv().state === 'indeterminate'}>
+                          <span class="route-tag tag-unknown" style={{ left: `${at(0.66).x + 12}px`, top: `${at(0.66).y - 16}px` }}>
+                            ?{command() && check() ? ` ${check()!.code}` : ''}
+                          </span>
+                        </Show>
+                      </>
+                    )
+                  }}
+                </For>
+              </div>
+            </>
+          )}
+        </Show>
 
-                  <text class="asset-block-label" x={faces.roof.x} y={faces.roof.y + 2}>{asset.label}</text>
-                </g>
-              )
-            }}</For>
-          </g>
-        </svg>
+        <div class="map-tools" aria-label="Camera">
+          <button type="button" class="icon-button" aria-label="Zoom in" onClick={() => zoomBy(0.8)}>
+            <PlusIcon />
+          </button>
+          <button type="button" class="icon-button" aria-label="Zoom out" onClick={() => zoomBy(1.25)}>
+            <MinusIcon />
+          </button>
+          <button type="button" class="icon-button" aria-label="Fit network" onClick={fit}>
+            <FitIcon />
+          </button>
+        </div>
       </div>
 
       <footer class="map-legend" aria-label="Legend">
-        <span class="legend-item"><span class="swatch sw-compromised" />compromised</span>
-        <span class="legend-item"><span class="swatch sw-discovered" />discovered</span>
-        <span class="legend-item"><span class="swatch sw-selected" />selected</span>
-        <span class="legend-item"><span class="swatch sw-blocked" />blocked route</span>
-        <span class="legend-sep" />
-        <span class="legend-hint">Drag to pan · +/− or ⤢ to zoom · click or focus + Enter to inspect</span>
+        <span class="legend-item"><span class="lg-swatch lg-compromised" />compromised</span>
+        <span class="legend-item"><span class="lg-line lg-spread" />spread</span>
+        <span class="legend-item"><span class="lg-line lg-current" />current attempt</span>
+        <span class="legend-item"><span class="lg-bar" />blocked</span>
+        <span class="legend-item"><span class="lg-line lg-idle" />not yet tried</span>
+        <span class="legend-hint">drag to pan · Enter on a host to inspect</span>
       </footer>
     </section>
   )

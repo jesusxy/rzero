@@ -4,12 +4,7 @@
 
 **Layout target:** `references/rzero-layout-mockup.png` is the target layout for Story Mode. Match its structure: a header with brand, scenario, Story/Command toggle, a step counter with a segmented progress bar and Restart/Back/Play/Next; a left panel with the malware profile card, the step list and hosts grouped by segment; a center column with metric cards, the isometric map, a legend strip and a collapsed event log; and a right panel with step details. Its light palette (ink `#1F2328`, page `#EEF0F3`, map `#F4F5F7`, compromised `#B3341F`, blocked `#9A5B00`, current `#1D5FD1`) and IBM Plex Mono/Sans typography are the initial theme.
 
-**Style references** (in `references/`):
-
-- `protocol-explorer.png`: a step-by-step protocol walkthrough (numbered step list, "Step N of M" details panel, packet table under the diagram). Its pacing and step/detail structure inform Story Mode; its dark palette does not.
-- `system-design.png`: an isometric system diagram with segments, building-like nodes and active routes. *(Not yet committed: the image still needs to be added to `references/`.)*
-
-Both style references use monospaced typography, restrained borders, building-like nodes and trace/pause/reset controls. Keep palette values in tokens so another theme can be added without changing semantics. The image of the social post provides context for the concept; it is not an additional interface to reproduce.
+**Style reference:** `references/protocol-explorer.png`, a step-by-step protocol walkthrough (numbered step list, "Step N of M" details panel, packet table under the diagram). Its pacing and step/detail structure, monospaced typography and restrained borders inform Story Mode; its dark palette does not. Keep palette values in tokens so another theme can be added without changing semantics. The image of the social post provides context for the concept; it is not an additional interface to reproduce.
 
 ## Specific design decisions
 

@@ -19,6 +19,7 @@ bun run test        # domain core unit tests
 bun run build       # type-check app, core and tests, then build
 bun run rzero validate fixtures/scenarios/001-five-node-baseline.json
 bun run rzero run      fixtures/scenarios/001-five-node-baseline.json   # run the engine, print events
+bun run rzero story    fixtures/scenarios/001-five-node-baseline.json   # narrate the run step by step
 ```
 
 ## Layout
@@ -26,7 +27,10 @@ bun run rzero run      fixtures/scenarios/001-five-node-baseline.json   # run th
 - `src/core/` — UI-independent domain core: native types, JSON Schemas,
   JSON/restricted-YAML import, validation, scenario compilation, the
   deterministic propagation engine, and result analysis, one-change
-  comparison and the replay reducer. Import it only through `src/core/index.ts`.
+  comparison, the replay reducer and replay steps (`groupSteps`). Import it
+  only through `src/core/index.ts`.
+- `src/app/narration/` — plain-English step narration (`narrate`): display
+  prose derived from event codes and facts, kept out of the core.
 - `src/components/`, `src/App.tsx` — Solid UI shell (prototype).
 - `src/domain/`, `src/data/` — prototype UI mock types and data; illustrative
   only, see `docs/core-integration.md`.

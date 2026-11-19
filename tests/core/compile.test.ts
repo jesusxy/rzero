@@ -84,7 +84,7 @@ describe('the complete five-node example (scenario 001)', () => {
     expect(compiled.input_digest).toBe(new Bun.CryptoHasher('sha256').update(canonical).digest('hex'))
     expect(compiled.input_digest).toMatch(/^[0-9a-f]{64}$/)
     // The projection carries facts and identifiers, not display text.
-    expect(canonical).not.toContain('LAB-WS-A')
+    expect(canonical).not.toContain('WS-01') // asset label
     expect(canonical).not.toContain('Synthetic SMB exploit')
     expect(canonical).not.toContain('Canonical lab rule')
     expect(canonical).toContain('"evidence_ids":["lab-definition"]')

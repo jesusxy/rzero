@@ -24,7 +24,6 @@ export type Selection =
 export type StaticMapAsset = {
   readonly id: string
   readonly label: string
-  readonly shortName: string
   readonly kind: Asset['kind']
   readonly platform: Asset['platform']
   readonly position: GridPosition
@@ -51,39 +50,14 @@ export type PlaybackCounts = {
   readonly indeterminate: number
 }
 
-const KIND_ABBREV: Record<Asset['kind'], string> = {
-  workstation: 'WS',
-  server: 'SRV',
-  controller: 'DC',
-  appliance: 'APP',
-  other: 'ND',
-}
-const nameCache = new WeakMap<CompiledScenario, ReadonlyMap<string, string>>()
-
-function nameMap(compiled: CompiledScenario): ReadonlyMap<string, string> {
-  const cached = nameCache.get(compiled)
-  if (cached !== undefined) return cached
-  const counters: Record<string, number> = {}
-  const map = new Map<string, string>()
-  for (const asset of [...compiled.effective.network.assets].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-    const prefix = KIND_ABBREV[asset.kind]
-    counters[prefix] = (counters[prefix] ?? 0) + 1
-    map.set(asset.id, `${prefix}-${String(counters[prefix]).padStart(2, '0')}`)
-  }
-  nameCache.set(compiled, map)
-  return map
-}
-
 export function buildStaticAssets(
   compiled: CompiledScenario,
   layout: ReadonlyMap<string, GridPosition>,
 ): StaticMapAsset[] {
   const seedId = compiled.effective.initial_asset_id
-  const names = nameMap(compiled)
   return compiled.effective.network.assets.map((asset) => ({
     id: asset.id,
     label: asset.label,
-    shortName: names.get(asset.id) ?? asset.id,
     kind: asset.kind,
     platform: asset.platform,
     position: layout.get(asset.id) ?? { x: 15, y: 15 },
@@ -281,8 +255,8 @@ export function capabilityById(compiled: CompiledScenario, id: string): Capabili
 }
 
 export function displayName(compiled: CompiledScenario | null, id: string): string {
-  if (compiled === null) return id
-  return nameMap(compiled).get(id) ?? id
+  const label = compiled === null ? undefined : assetById(compiled, id)?.label
+  return label !== undefined && label !== '' ? label : id
 }
 
 export function attemptResolvedEvent(run: RunResult, id: string): PropagationResolvedEvent | null {

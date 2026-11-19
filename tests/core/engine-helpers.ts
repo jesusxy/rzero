@@ -43,10 +43,13 @@ export type LabSpec = {
 const smbService = () => [{ id: 'smb', transport: 'tcp', port: 445, status: 'enabled' }]
 const smbPresent = () => [{ id: 'LAB-SMB-1', status: 'present' }]
 
+// Canonical lab display names (docs/validation-scenarios.md assets A–E).
+const LAB_LABELS: Record<string, string> = { A: 'WS-01', B: 'WS-02', C: 'WS-03', D: 'SRV-01', E: 'SRV-02' }
+
 function defaultAsset(id: string): Record<string, unknown> {
   return {
     id,
-    label: `LAB-${id}`,
+    label: LAB_LABELS[id] ?? id,
     kind: 'workstation',
     platform: 'windows',
     segment_id: 'lab',

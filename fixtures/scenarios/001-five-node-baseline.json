@@ -8,7 +8,7 @@
     ],
     "assets": [
       {
-        "id": "A", "label": "LAB-WS-A", "kind": "workstation",
+        "id": "A", "label": "WS-01", "kind": "workstation",
         "platform": "windows", "segment_id": "lab",
         "critical": false, "isolated": false,
         "services": [{ "id": "smb", "transport": "tcp", "port": 445, "status": "enabled" }],
@@ -16,7 +16,7 @@
         "credential_ids": []
       },
       {
-        "id": "B", "label": "LAB-WS-B", "kind": "workstation",
+        "id": "B", "label": "WS-02", "kind": "workstation",
         "platform": "windows", "segment_id": "lab",
         "critical": false, "isolated": false,
         "services": [{ "id": "smb", "transport": "tcp", "port": 445, "status": "enabled" }],
@@ -24,7 +24,7 @@
         "credential_ids": []
       },
       {
-        "id": "C", "label": "LAB-WS-C", "kind": "workstation",
+        "id": "C", "label": "WS-03", "kind": "workstation",
         "platform": "windows", "segment_id": "lab",
         "critical": false, "isolated": false,
         "services": [{ "id": "smb", "transport": "tcp", "port": 445, "status": "enabled" }],
@@ -32,7 +32,7 @@
         "credential_ids": []
       },
       {
-        "id": "D", "label": "LAB-SRV-D", "kind": "server",
+        "id": "D", "label": "SRV-01", "kind": "server",
         "platform": "windows", "segment_id": "lab",
         "critical": false, "isolated": false,
         "services": [{ "id": "smb", "transport": "tcp", "port": 445, "status": "enabled" }],
@@ -40,7 +40,7 @@
         "credential_ids": []
       },
       {
-        "id": "E", "label": "LAB-SRV-E", "kind": "server",
+        "id": "E", "label": "SRV-02", "kind": "server",
         "platform": "windows", "segment_id": "lab",
         "critical": false, "isolated": false,
         "services": [{ "id": "smb", "transport": "tcp", "port": 445, "status": "enabled" }],

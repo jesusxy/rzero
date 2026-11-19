@@ -391,7 +391,6 @@ function HostPanel(props: { store: SimulationStore; assetId: string }) {
             </Show>
           </div>
           <dl class="facts">
-            <dt>Label</dt><dd>{host().label}</dd>
             <dt>Internal ID</dt><dd>{host().id}</dd>
             <dt>Kind</dt><dd>{host().kind}</dd>
             <dt>Platform</dt><dd>{host().platform}</dd>

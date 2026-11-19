@@ -15,10 +15,19 @@ import {
   type SimulationEvent,
   type Step,
 } from '../../core'
-import { INTERVENTION_KINDS, REASONS, REASON_VARIANTS, STEP_TEXT, type DecidingStatus, type ReasonTemplate } from './templates'
+import {
+  CAPABILITY_NOUNS,
+  INTERVENTION_KINDS,
+  REASONS,
+  REASON_VARIANTS,
+  SERVICE_NAMES,
+  STEP_TEXT,
+  type DecidingStatus,
+  type ReasonTemplate,
+} from './templates'
 
 export type Narration = {
-  /** Headline only, e.g. "Blocked at LAB-WS-C". The step number is shown separately. */
+  /** Headline only, e.g. "Blocked at WS-03". The step number is shown separately. */
   readonly title: string
   /** Outcome-neutral title for a step not yet reached. */
   readonly preview: string
@@ -88,10 +97,12 @@ class NarrationContext {
     )
     const capability = this.scenario.effective.profile.capabilities.find((entry) => entry.id === attempted.capability_id)
     const vars = this.attemptVars(attempted, capability)
+    const mention = this.capabilityMention(attempted)
 
     const preview = fill(this.hasAlternatives(attempted) ? STEP_TEXT.attempt.previewWithCapability : STEP_TEXT.attempt.preview, vars)
-    const sentences = [...this.skipSentences(), fill(this.lead(attempted), vars)]
-    const why = this.why(resolved?.evidence_ids ?? capability?.evidence_ids ?? [])
+    const sentences = [...this.skipSentences(), fill(this.lead(attempted, mention.same), vars)]
+    // The evidence claim is shown once, on the first step that uses this capability.
+    const why = mention.firstUse ? this.why(resolved?.evidence_ids ?? capability?.evidence_ids ?? []) : undefined
 
     if (resolved === undefined) {
       sentences.push(STEP_TEXT.unresolved.consequence)
@@ -109,7 +120,8 @@ class NarrationContext {
       return withWhy({ title: fill(STEP_TEXT.succeeded.title, vars), preview, body: sentences.join(' ') }, why)
     }
 
-    const text = resolved.outcome === 'blocked' ? STEP_TEXT.blocked : STEP_TEXT.indeterminate
+    const blocked = resolved.outcome === 'blocked'
+    const text = blocked ? STEP_TEXT.blocked : STEP_TEXT.indeterminate
     const deciding = primaryCheck(resolved.checks)
     if (deciding !== undefined) {
       sentences.push(fill(reasonTemplate(deciding).because, { ...vars, ...checkVars(deciding) }))
@@ -124,10 +136,13 @@ class NarrationContext {
         sentences.push(STEP_TEXT.failOutweighsUnknown)
       }
     }
-    const unreachable =
-      resolved.outcome === 'blocked' &&
-      resolved.checks.some((check) => check.code === 'TARGET_NOT_ISOLATED' && check.status === 'fail')
-    sentences.push(fill(unreachable ? STEP_TEXT.blocked.consequenceUnreachable : text.consequence, vars))
+    if (!blocked) {
+      sentences.push(fill(STEP_TEXT.indeterminate.consequence, vars))
+    } else if (resolved.checks.some((check) => check.code === 'TARGET_NOT_ISOLATED' && check.status === 'fail')) {
+      sentences.push(fill(STEP_TEXT.blocked.consequenceUnreachable, vars))
+    } else {
+      sentences.push(...this.whatElseCanTry(attempted, vars))
+    }
     return withWhy({ title: fill(text.title, vars), preview, body: sentences.join(' ') }, why)
   }
 
@@ -182,11 +197,13 @@ class NarrationContext {
 
   private attemptVars(attempted: PropagationAttemptedEvent, capability: Capability | undefined): Vars {
     const link = this.scenario.effective.network.links.find((entry) => entry.id === attempted.link_id)
+    const serviceId = capability?.service_id ?? link?.service_id
     return {
       source: this.label(attempted.source_id),
       target: this.label(attempted.target_id),
       capability: capability?.label || attempted.capability_id,
-      service: capability?.service_id ?? link?.service_id,
+      noun: CAPABILITY_NOUNS[capability?.mechanism ?? 'unknown'],
+      service: serviceId === undefined ? undefined : (SERVICE_NAMES[serviceId] ?? serviceId),
       vulnerability: capability?.mechanism === 'remote_exploit' ? capability.vulnerability_id : undefined,
       privilege: capability?.mechanism === 'remote_execution' ? capability.minimum_privilege : undefined,
       platforms: capability === undefined ? undefined : joinList([...capability.target_platforms], 'or'),
@@ -204,7 +221,56 @@ class NarrationContext {
     )
   }
 
-  private lead(attempted: PropagationAttemptedEvent): string {
+  /**
+   * Whether this step is the first to use its capability, and whether a later
+   * mention can say "the same <noun>" unambiguously — that is, no other
+   * capability of the same mechanism has appeared in the story so far.
+   */
+  private capabilityMention(attempted: PropagationAttemptedEvent): { firstUse: boolean; same: boolean } {
+    const mechanismOf = (id: string) =>
+      this.scenario.effective.profile.capabilities.find((entry) => entry.id === id)?.mechanism
+    const earlier = this.events
+      .slice(0, this.step.start)
+      .filter((event): event is PropagationAttemptedEvent => event.type === 'propagation_attempted')
+    const firstUse = !earlier.some((event) => event.capability_id === attempted.capability_id)
+    const mechanism = mechanismOf(attempted.capability_id)
+    const ambiguous = earlier.some(
+      (event) => event.capability_id !== attempted.capability_id && mechanismOf(event.capability_id) === mechanism,
+    )
+    return { firstUse, same: !firstUse && !ambiguous }
+  }
+
+  /**
+   * What can still try the target after a block, from the static network: later
+   * capabilities on this same link (the engine tries them in ID order), and
+   * other links to the target. Only links whose service has a matching
+   * capability in the profile count.
+   */
+  private whatElseCanTry(attempted: PropagationAttemptedEvent, vars: Vars): string[] {
+    const { links } = this.scenario.effective.network
+    const { capabilities } = this.scenario.effective.profile
+    const link = links.find((entry) => entry.id === attempted.link_id)
+    const moreOnLink =
+      link !== undefined &&
+      capabilities.some((entry) => entry.service_id === link.service_id && entry.id > attempted.capability_id)
+    const others = links.filter(
+      (entry) =>
+        entry.target_id === attempted.target_id &&
+        entry.id !== attempted.link_id &&
+        capabilities.some((capability) => capability.service_id === entry.service_id),
+    )
+    const sentences: string[] = []
+    if (moreOnLink) sentences.push(fill(STEP_TEXT.blocked.moreOptionsOnLink, vars))
+    if (others.length > 0) {
+      const sources = joinList([...new Set(others.map((entry) => this.label(entry.source_id)))])
+      sentences.push(fill(STEP_TEXT.blocked.otherLinks, { ...vars, sources }))
+    } else if (!moreOnLink) {
+      sentences.push(fill(STEP_TEXT.blocked.noOtherLinks, vars))
+    }
+    return sentences
+  }
+
+  private lead(attempted: PropagationAttemptedEvent, same: boolean): string {
     const earlier = this.events
       .slice(0, this.step.start)
       .filter((event): event is PropagationResolvedEvent => event.type === 'propagation_resolved')
@@ -215,12 +281,12 @@ class NarrationContext {
       previous.source_id === attempted.source_id &&
       previous.target_id === attempted.target_id
     ) {
-      return STEP_TEXT.attempt.leadNextOption
+      return same ? STEP_TEXT.attempt.leadNextOptionSame : STEP_TEXT.attempt.leadNextOption
     }
     if (earlier.some((event) => event.target_id === attempted.target_id && event.outcome !== 'succeeded')) {
-      return STEP_TEXT.attempt.leadRetried
+      return same ? STEP_TEXT.attempt.leadRetriedSame : STEP_TEXT.attempt.leadRetried
     }
-    return STEP_TEXT.attempt.lead
+    return same ? STEP_TEXT.attempt.leadSame : STEP_TEXT.attempt.lead
   }
 
   private skipSentences(): string[] {

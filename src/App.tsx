@@ -134,8 +134,7 @@ function App() {
                 aria-pressed={assetSelected(asset.id)}
                 onClick={() => store.selectAsset(asset.id)}
               >
-                <span class="inventory-id">{asset.shortName}</span>
-                <span class="inventory-label">{asset.label}</span>
+                <span class="inventory-id">{asset.label}</span>
                 <span class="inventory-tags">
                   <Show when={asset.isSeed}><span class="dot dot-seed" title="configured starting host" /></Show>
                   <span class={`state-badge state-${stateOf(asset.id)}`}>{stateOf(asset.id)}</span>

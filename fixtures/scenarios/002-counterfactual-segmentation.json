@@ -16,7 +16,7 @@
     "assets": [
       {
         "id": "A",
-        "label": "LAB-WS-A",
+        "label": "WS-01",
         "kind": "workstation",
         "platform": "windows",
         "segment_id": "workstations",
@@ -40,7 +40,7 @@
       },
       {
         "id": "B",
-        "label": "LAB-WS-B",
+        "label": "WS-02",
         "kind": "workstation",
         "platform": "windows",
         "segment_id": "workstations",
@@ -64,7 +64,7 @@
       },
       {
         "id": "C",
-        "label": "LAB-WS-C",
+        "label": "WS-03",
         "kind": "workstation",
         "platform": "windows",
         "segment_id": "workstations",
@@ -88,7 +88,7 @@
       },
       {
         "id": "D",
-        "label": "LAB-SRV-D",
+        "label": "SRV-01",
         "kind": "server",
         "platform": "windows",
         "segment_id": "servers",
@@ -112,7 +112,7 @@
       },
       {
         "id": "E",
-        "label": "LAB-SRV-E",
+        "label": "SRV-02",
         "kind": "server",
         "platform": "windows",
         "segment_id": "servers",

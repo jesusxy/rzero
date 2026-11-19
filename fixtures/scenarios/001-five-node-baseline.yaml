@@ -12,7 +12,7 @@ network:
 
   assets:
     - id: A
-      label: LAB-WS-A
+      label: WS-01
       kind: workstation
       platform: windows
       segment_id: lab
@@ -25,7 +25,7 @@ network:
       credential_ids: []
 
     - id: B
-      label: LAB-WS-B
+      label: WS-02
       kind: workstation
       platform: windows
       segment_id: lab
@@ -38,7 +38,7 @@ network:
       credential_ids: []
 
     - id: C
-      label: LAB-WS-C
+      label: WS-03
       kind: workstation
       platform: windows
       segment_id: lab
@@ -51,7 +51,7 @@ network:
       credential_ids: []
 
     - id: D
-      label: LAB-SRV-D
+      label: SRV-01
       kind: server
       platform: windows
       segment_id: lab
@@ -64,7 +64,7 @@ network:
       credential_ids: []
 
     - id: E
-      label: LAB-SRV-E
+      label: SRV-02
       kind: server
       platform: windows
       segment_id: lab

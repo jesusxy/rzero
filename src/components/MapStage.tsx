@@ -297,17 +297,17 @@ export function MapStage(props: MapStageProps) {
                   role="button"
                   tabindex="0"
                   aria-pressed={props.assetSelected(asset.id)}
-                  aria-label={`${asset.shortName} (${asset.id}), ${asset.kind}, ${state()}${asset.isSeed ? ', configured starting host' : ''}`}
+                  aria-label={`${asset.label} (${asset.id}), ${asset.kind}, ${state()}${asset.isSeed ? ', configured starting host' : ''}`}
                   onClick={() => props.onSelectAsset(asset.id)}
                   onKeyDown={(event) => keyActivate(event, () => props.onSelectAsset(asset.id))}
                 >
-                  <title>{`${asset.shortName} — ${asset.kind} — ${state()}`}</title>
+                  <title>{`${asset.label} — ${asset.kind} — ${state()}`}</title>
                   <polygon class="asset-face asset-face-left" points={faces.left} />
                   <polygon class="asset-face asset-face-right" points={faces.right} />
                   <polygon class="asset-face asset-face-top" points={faces.top} />
                   <For each={racks}>{(line) => <polyline class="asset-rack" points={line} />}</For>
 
-                  <text class="asset-block-label" x={faces.roof.x} y={faces.roof.y + 2}>{asset.shortName}</text>
+                  <text class="asset-block-label" x={faces.roof.x} y={faces.roof.y + 2}>{asset.label}</text>
                 </g>
               )
             }}</For>

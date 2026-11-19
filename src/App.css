@@ -450,7 +450,7 @@ button.secondary {
 .inventory-empty { padding: 0 4px; }
 .inventory-item {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 1fr auto;
   gap: 8px;
   align-items: center;
   text-align: left;
@@ -459,7 +459,6 @@ button.secondary {
 }
 .inventory-item:hover { background: var(--state-discovered-soft); color: var(--ink-strong); }
 .inventory-id { font: 12px var(--mono); font-weight: 600; color: var(--ink-strong); }
-.inventory-label { font-size: 12px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inventory-selected { outline: 2px solid var(--ink-strong); outline-offset: -2px; }
 
 .state-badge {

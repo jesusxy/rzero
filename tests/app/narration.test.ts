@@ -11,7 +11,7 @@ import {
 } from '../../src/core'
 import { narrate, type Narration } from '../../src/app/narration'
 import { fill, reasonTemplate } from '../../src/app/narration/narrate'
-import { REASONS, REASON_VARIANTS } from '../../src/app/narration/templates'
+import { REASONS, REASON_VARIANTS, SERVICE_NAMES, STEP_TEXT } from '../../src/app/narration/templates'
 import { expectCompiled, fixtureText } from '../core/helpers'
 import { compileLab, type LabSpec } from '../core/engine-helpers'
 import {
@@ -104,7 +104,7 @@ describe('templates', () => {
     const vars = {
       source: 'SRC',
       target: 'TGT',
-      capability: 'Cap',
+      noun: 'exploit',
       service: 'svc',
       vulnerability: 'VULN-1',
       privilege: 'admin',
@@ -173,28 +173,24 @@ describe('narrate — rendering', () => {
   test('001: titles, decisive facts and evidence', () => {
     const [seed, ab, ac, bd, de, summary] = required[0]!.narrations
     expect([seed, ab, ac, bd, de, summary].map((n) => n!.title)).toEqual([
-      'LAB-WS-A starts compromised',
-      'LAB-WS-B compromised',
-      'Blocked at LAB-WS-C',
-      'LAB-SRV-D compromised',
-      'Blocked at LAB-SRV-E',
+      'WS-01 starts compromised',
+      'WS-02 compromised',
+      'Blocked at WS-03',
+      'SRV-01 compromised',
+      'Blocked at SRV-02',
       '3 of 5 hosts compromised',
     ])
-    expect(ac!.body).toContain("network doesn't allow smb traffic from LAB-WS-A to LAB-WS-C") // NETWORK_ACCESS
-    expect(de!.body).toContain("LAB-SRV-E doesn't have the LAB-SMB-1 weakness") // VULNERABILITY_PRESENT
-    expect(ab!.body).toContain('Synthetic SMB exploit') // capability label
-    for (const n of [ab, ac, bd, de]) expect(n!.why).toBe('Enabled SMB plus LAB-SMB-1 permits modeled compromise.')
-    expect(seed!.why).toBeUndefined()
-    expect(summary!.why).toBeUndefined()
-    expect(summary!.body).toContain('3 of 5 hosts are compromised, a 60% blast radius')
-    expect(summary!.body).toContain('LAB-WS-C and LAB-SRV-E were never compromised')
+    expect(ac!.body).toContain("network doesn't allow SMB traffic from WS-01 to WS-03") // NETWORK_ACCESS
+    expect(de!.body).toContain("SRV-02 doesn't have the LAB-SMB-1 weakness the exploit needs") // VULNERABILITY_PRESENT
+    expect(summary!.body).toContain('3 of 5 hosts are compromised, a 60% blast radius: WS-01, WS-02 and SRV-01')
+    expect(summary!.body).toContain('WS-03 and SRV-02 were never compromised')
   })
 
   test('the primary reason is the first failure, kept alongside an unknown', () => {
     const blocked = lab('005 denied', lab005DeniedUnknown).narrations[1]!
-    expect(blocked.title).toBe('Blocked at LAB-B')
+    expect(blocked.title).toBe('Blocked at WS-02')
     const network = blocked.body.indexOf("network doesn't allow")
-    const vulnerability = blocked.body.indexOf("we don't know whether LAB-B has the LAB-SMB-1 weakness")
+    const vulnerability = blocked.body.indexOf("we don't know whether WS-02 has the LAB-SMB-1 weakness")
     expect(network).toBeGreaterThan(-1)
     expect(vulnerability).toBeGreaterThan(network) // listed as an additional issue
   })
@@ -212,15 +208,15 @@ describe('narrate — rendering', () => {
 
   test('an isolated target is not promised another route', () => {
     const n = lab('009 isolated target', lab009IsolatedTarget).narrations[1]!
-    expect(n.body).toContain('protects LAB-B from every route')
-    expect(n.body).not.toContain('another route could still reach it')
+    expect(n.body).toContain('Being cut off protects WS-02 from every route in this model.')
+    expect(n.body).not.toMatch(/nothing else will try|can still be reached/)
   })
 
   test('alternatives and earlier blocks are explained (004, 007)', () => {
-    expect(lab('004', ALL_LABS['004 alternate route']!).narrations[3]!.body).toMatch(/^An earlier attempt on LAB-C didn't get through/)
+    expect(lab('004', ALL_LABS['004 alternate route']!).narrations[3]!.body).toMatch(/^An earlier attempt on WS-03 didn't get through/)
     const multi = lab('007', ALL_LABS['007 multiple mechanisms']!).narrations
-    expect(multi[2]!.body).toMatch(/^That didn't work, so LAB-A tries its next option on LAB-B: the Synthetic WinRM execution/)
-    expect(multi[2]!.body).toContain("LAB-A's credential cred-a gives admin access")
+    expect(multi[2]!.body).toMatch(/^That didn't work, so WS-01 tries its next option on WS-02: the Synthetic WinRM execution/)
+    expect(multi[2]!.body).toContain("WS-01's credential cred-a gives admin access")
   })
 })
 
@@ -228,7 +224,7 @@ describe('narrate — interventions', () => {
   test('002 modified run names the segmentation rule on the attempt it decided', () => {
     const s = story('002', fixture('002-counterfactual-segmentation.json'))
     const byPair = (source: string, target: string) => s.narrations[s.steps.findIndex((st) => st.source_id === source && st.target_id === target)]!
-    expect(byPair('B', 'D').title).toBe('Blocked at LAB-SRV-D')
+    expect(byPair('B', 'D').title).toBe('Blocked at SRV-01')
     expect(byPair('B', 'D').body).toContain('blocked by the segmentation rule deny-ws-srv-smb')
     // A → C was denied by the authored network, not by an intervention.
     expect(byPair('A', 'C').body).not.toContain('deny-ws-srv-smb')
@@ -267,7 +263,7 @@ describe('narrate — previews and summaries', () => {
 
   test('seed and terminal previews', () => {
     const [seed, , , , , summary] = required[0]!.narrations
-    expect(seed!.preview).toBe('LAB-WS-A starts compromised')
+    expect(seed!.preview).toBe('WS-01 starts compromised')
     expect(summary!.preview).toBe('Results')
   })
 
@@ -279,14 +275,14 @@ describe('narrate — previews and summaries', () => {
 
   test('summary: critical hosts reached, spared, and indeterminate targets', () => {
     const reached = lab('critical reached', { assets: { A: {}, B: { critical: true } }, links: [{ id: 'ab', source: 'A', target: 'B' }] })
-    expect(reached.narrations.at(-1)!.body).toContain('Critical hosts reached: LAB-B.')
+    expect(reached.narrations.at(-1)!.body).toContain('Critical hosts reached: WS-02.')
     const spared = lab('critical spared', {
       assets: { A: {}, B: { critical: true } },
       links: [{ id: 'ab', source: 'A', target: 'B', access: 'deny' }],
     })
-    expect(spared.narrations.at(-1)!.body).toContain('None of the critical hosts (LAB-B) was reached.')
+    expect(spared.narrations.at(-1)!.body).toContain('None of the critical hosts (WS-02) was reached.')
     expect(lab('005', lab005UnknownVulnerability).narrations.at(-1)!.body).toContain(
-      "We couldn't tell what would happen at LAB-B: count it as unknown, not as safe.",
+      "We couldn't tell what would happen at WS-02: count it as unknown, not as safe.",
     )
   })
 
@@ -296,7 +292,202 @@ describe('narrate — previews and summaries', () => {
     expect(capped.steps.at(-1)!.kind).toBe('aborted')
     expect(last.title).toBe('The run stopped early')
     expect(last.body).toContain('hit the limit on how many events one run may record')
-    expect(last.body).toContain('It had just picked LAB-WS-C as a target')
+    expect(last.body).toContain('It had just picked WS-03 as a target')
     expect(last.body).toContain('2 of 5 hosts were compromised before it stopped')
+  })
+})
+
+describe('wording rules', () => {
+  const twoExploitProfile = {
+    id: 'lab-two-exploits',
+    version: '1',
+    name: 'Two exploits',
+    scope: 'synthetic',
+    review_status: 'reviewed',
+    sources: [
+      {
+        id: 'lab-definition',
+        kind: 'synthetic',
+        title: 'Canonical lab rule',
+        local_reference: 'docs/validation-scenarios.md',
+        accessed_on: '2026-10-12',
+        claim_summary: 'Synthetic.',
+      },
+    ],
+    capabilities: ['A', 'B'].map((letter, i) => ({
+      id: `smb-exploit-${letter.toLowerCase()}`,
+      label: `Exploit ${letter}`,
+      mechanism: 'remote_exploit',
+      service_id: 'smb',
+      target_platforms: ['windows'],
+      vulnerability_id: `WEAK-${i + 1}`,
+      evidence_ids: ['lab-definition'],
+      confidence: 'high',
+      assumptions: ['Synthetic.'],
+    })),
+    limitations: ['Synthetic.'],
+  }
+
+  test('1. the asset label is the only display name (fixtures use WS-01 … SRV-02)', () => {
+    const s = story('001', fixture('001-five-node-baseline.json'))
+    const labels = s.scenario.effective.network.assets.map((asset) => [asset.id, asset.label])
+    expect(labels).toEqual([
+      ['A', 'WS-01'],
+      ['B', 'WS-02'],
+      ['C', 'WS-03'],
+      ['D', 'SRV-01'],
+      ['E', 'SRV-02'],
+    ])
+    for (const n of s.narrations) expect(n.body).not.toMatch(/LAB-(WS|SRV)/)
+  })
+
+  test('2. services are shown by display name, never by raw ID', () => {
+    expect(SERVICE_NAMES).toEqual({ smb: 'SMB', winrm: 'WinRM' })
+    const [, ab] = required[0]!.narrations
+    expect(ab!.body).toContain('WS-01 tries WS-02 over SMB')
+    expect(lab('006', lab006Credential('admin', 'valid')).narrations[1]!.body).toContain('over WinRM')
+    // A raw service ID as a standalone word (IDs such as deny-ws-srv-smb are shown verbatim).
+    for (const s of everything) for (const n of s.narrations) expect(n.body).not.toMatch(/(?<![-\w])(smb|winrm)(?![-\w])/)
+  })
+
+  test('3. "Why" appears only on the first step that uses a capability', () => {
+    const whys = (s: Story) => s.narrations.map((n) => n.why ?? null)
+    const claim = 'Enabled SMB plus LAB-SMB-1 permits modeled compromise.'
+    // 001: seed, A→B, A→C, B→D, D→E, summary — one capability, first used at A→B.
+    expect(whys(required[0]!)).toEqual([null, claim, null, null, null, null])
+    // 007: SMB exploit then WinRM execution — each capability's first use carries it.
+    expect(whys(lab('007', ALL_LABS['007 multiple mechanisms']!))).toEqual([null, claim, claim, null])
+  })
+
+  test('4. after a block, say what else can still try the target (static network)', () => {
+    const [, , ac, , de] = required[0]!.narrations
+    expect(ac!.body).toContain('No other host has a link to WS-03, so nothing else will try.')
+    expect(de!.body).toContain('No other host has a link to SRV-02, so nothing else will try.')
+    // 004: B → C also targets C.
+    expect(lab('004', ALL_LABS['004 alternate route']!).narrations[2]!.body).toContain(
+      'WS-03 can still be reached through other links (from WS-02).',
+    )
+    // 007: the WinRM link from the same source still targets B.
+    expect(lab('007', ALL_LABS['007 multiple mechanisms']!).narrations[1]!.body).toContain(
+      'WS-02 can still be reached through other links (from WS-01).',
+    )
+    // 007 same service: a later capability on this very link will try next.
+    const same = lab('007 same', ALL_LABS['007 same service']!).narrations[1]!.body
+    expect(same).toContain('WS-01 still has another way to try WS-02 over SMB.')
+    expect(same).not.toContain('nothing else will try')
+    // A link whose service no profile capability uses does not count.
+    const unusable = lab('unusable link', {
+      assets: {
+        A: {},
+        B: {
+          services: [
+            { id: 'smb', transport: 'tcp', port: 445, status: 'enabled' },
+            { id: 'winrm', transport: 'tcp', port: 5985, status: 'enabled' },
+          ],
+        },
+        C: {},
+      },
+      links: [
+        { id: 'ab', source: 'A', target: 'B', access: 'deny' },
+        { id: 'cb', source: 'C', target: 'B', service: 'winrm' },
+      ],
+    })
+    expect(unusable.narrations[1]!.body).toContain('No other host has a link to WS-02, so nothing else will try.')
+    // The old, unfounded wording is gone everywhere.
+    for (const s of everything) for (const n of s.narrations) expect(n.body).not.toContain('another route could still reach it')
+  })
+
+  test('5. the capability is named in full once, then "with the same exploit"', () => {
+    const bodies = required[0]!.narrations.map((n) => n.body)
+    expect(bodies.join(' ').split('Synthetic SMB exploit')).toHaveLength(2) // exactly one full mention
+    expect(bodies[1]).toContain('WS-01 tries WS-02 over SMB, using the Synthetic SMB exploit.')
+    expect(bodies[2]).toContain('WS-01 tries WS-03 over SMB with the same exploit.')
+    expect(bodies[3]).toContain('WS-02 tries SRV-01 over SMB with the same exploit.')
+    expect(bodies[4]).toContain('SRV-01 tries SRV-02 over SMB with the same exploit.')
+  })
+
+  test('5. remote execution has its own short noun', () => {
+    const twoTargets = lab('winrm twice', {
+      assets: {
+        A: { credential_ids: ['cred-a'] },
+        B: { services: [{ id: 'winrm', transport: 'tcp', port: 5985, status: 'enabled' }], vulnerabilities: [] },
+        C: { services: [{ id: 'winrm', transport: 'tcp', port: 5985, status: 'enabled' }], vulnerabilities: [] },
+      },
+      links: [
+        { id: 'ab', source: 'A', target: 'B', service: 'winrm' },
+        { id: 'ac', source: 'A', target: 'C', service: 'winrm' },
+      ],
+      profile: lab006Credential('admin', 'valid').profile,
+      credentials: [
+        {
+          id: 'cred-a',
+          label: 'Lab credential',
+          grants: ['B', 'C'].map((target_id) => ({ target_id, service_id: 'winrm', privilege: 'admin', status: 'valid' })),
+        },
+      ],
+    })
+    expect(twoTargets.narrations[1]!.body).toContain('using the Synthetic WinRM execution')
+    expect(twoTargets.narrations[2]!.body).toContain('WS-01 tries WS-03 over WinRM with the same remote execution.')
+  })
+
+  test('5. "the same" is used only when unambiguous; otherwise the label is repeated', () => {
+    // A→B uses Exploit A; A→C tries Exploit A again (unambiguous) then falls back to
+    // Exploit B (first use); B→D then uses Exploit A while two exploits have appeared.
+    const s = lab('two exploits', {
+      assets: {
+        A: {},
+        B: { vulnerabilities: [{ id: 'WEAK-1', status: 'present' }] },
+        C: {
+          vulnerabilities: [
+            { id: 'WEAK-1', status: 'absent' },
+            { id: 'WEAK-2', status: 'present' },
+          ],
+        },
+        D: { vulnerabilities: [{ id: 'WEAK-1', status: 'present' }] },
+      },
+      links: [
+        { id: 'ab', source: 'A', target: 'B' },
+        { id: 'ac', source: 'A', target: 'C' },
+        { id: 'bd', source: 'B', target: 'D' },
+      ],
+      profile: twoExploitProfile,
+    })
+    const attempts = s.steps.flatMap((step, i) => (step.kind === 'attempt' ? [s.narrations[i]!.body] : []))
+    expect(attempts).toHaveLength(4)
+    expect(attempts[0]).toContain('WS-01 tries WS-02 over SMB, using the Exploit A.')
+    expect(attempts[1]).toContain('WS-01 tries WS-03 over SMB with the same exploit.')
+    expect(attempts[2]).toContain("That didn't work, so WS-01 tries its next option on WS-03: the Exploit B over SMB.")
+    expect(attempts[3]).toContain('WS-02 tries SRV-01 over SMB, using the Exploit A.')
+  })
+
+  test('every step template fills completely from the tokens narrate supplies', () => {
+    const supplied = {
+      seed: 'S',
+      source: 'S',
+      target: 'T',
+      capability: 'Cap',
+      noun: 'exploit',
+      service: 'SMB',
+      vulnerability: 'V',
+      privilege: 'admin',
+      platforms: 'windows',
+      credential: 'cred-a',
+      granted: 'admin',
+      intervention: 'the patch p',
+      issues: 'x',
+      sources: 'WS-02',
+      count: '1',
+      total: '2',
+      percent: '50%',
+      hosts: 'WS-01',
+      are: 'is',
+      were: 'was',
+      them: 'it',
+      they: 'it',
+      reason: 'it was cancelled',
+    }
+    const strings = (value: unknown): string[] =>
+      typeof value === 'string' ? [value] : Object.values(value as Record<string, unknown>).flatMap(strings)
+    for (const text of strings(STEP_TEXT)) expect(fill(text, supplied)).not.toMatch(LEFTOVER)
   })
 })

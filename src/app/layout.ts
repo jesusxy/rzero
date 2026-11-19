@@ -3,8 +3,8 @@ import type { Asset } from '../core'
 export type GridPosition = { readonly x: number; readonly y: number }
 
 const BOARD_SIZE = 30
-const COLUMN_GAP = 8
-const ROW_GAP = 9
+const COLUMN_GAP = 15
+const ROW_GAP = 13
 
 const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 const bySegment = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)

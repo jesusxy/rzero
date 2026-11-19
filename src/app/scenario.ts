@@ -1,8 +1,32 @@
-import scenarioText from '../../fixtures/scenarios/001-five-node-baseline.json?raw'
+import baselineText from '../../fixtures/scenarios/001-five-node-baseline.json?raw'
+import segmentedText from '../../fixtures/scenarios/002-counterfactual-segmentation.json?raw'
 
-export const BUILTIN_SCENARIO_TEXT: string = scenarioText
-export const BUILTIN_SCENARIO_FILE = '001-five-node-baseline.json'
-export const BUILTIN_SCENARIO_LABEL = 'Five-node lab'
-export const BUILTIN_SCENARIO_NOTE = 'Synthetic demonstration — not a real network or malware family.'
-export const BUILTIN_SCENARIO_SEED = 'A'
-export const BUILTIN_SCENARIO_ASSET_COUNT = 5
+export type BuiltinScenario = {
+  readonly key: string
+  readonly file: string
+  readonly text: string
+  readonly title: string
+  readonly description: string
+}
+
+export const BUILTIN_SCENARIOS: readonly BuiltinScenario[] = [
+  {
+    key: '001',
+    file: '001-five-node-baseline.json',
+    text: baselineText,
+    title: 'Five-node lab',
+    description: 'Synthetic demo: not a real network or malware family',
+  },
+  {
+    key: '002',
+    file: '002-counterfactual-segmentation.json',
+    text: segmentedText,
+    title: 'Five-node lab, segmented',
+    description: 'Synthetic demo: a workstation/server boundary denies SMB',
+  },
+]
+
+export function selectBuiltinScenario(search: string): BuiltinScenario {
+  const key = new URLSearchParams(search).get('scenario')
+  return BUILTIN_SCENARIOS.find((scenario) => scenario.key === key) ?? BUILTIN_SCENARIOS[0]!
+}

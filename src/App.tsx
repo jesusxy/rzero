@@ -1,166 +1,66 @@
-import { createMemo, For, Show } from 'solid-js'
-import { MapStage } from './components/MapStage'
-import { Inspector } from './components/Inspector'
+import { For, onCleanup, onMount, Show } from 'solid-js'
 import { createSimulationStore } from './app/store'
-import {
-  assetState,
-  attemptsByLink,
-  buildStaticAssets,
-  buildStaticLinks,
-  displayName,
-  isoWaypoints,
-  linkViewState,
-} from './app/view'
-import { BUILTIN_SCENARIO_LABEL, BUILTIN_SCENARIO_NOTE } from './app/scenario'
+import { Header } from './components/Header'
+import { LeftPanel } from './components/LeftPanel'
+import { MetricCards } from './components/MetricCards'
+import { MapStage } from './components/MapStage'
+import { EventLog } from './components/EventLog'
+import { StepDetails } from './components/StepDetails'
 import './App.css'
 
 function App() {
   const store = createSimulationStore()
 
-  const staticAssets = createMemo(() => {
-    const compiled = store.compiled()
-    return compiled === null ? [] : buildStaticAssets(compiled, store.layout())
+  onMount(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (event.key === ' ') {
+        event.preventDefault()
+        store.togglePlay()
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        store.next()
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        store.back()
+      } else if (event.key === 'r' || event.key === 'R') {
+        store.restart()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    onCleanup(() => window.removeEventListener('keydown', onKey))
   })
-  const occupied = createMemo(() => {
-    const set = new Set<string>()
-    for (const position of store.layout().values()) set.add(`${position.x},${position.y}`)
-    return set
-  })
-  const staticLinks = createMemo(() => {
-    const compiled = store.compiled()
-    if (compiled === null) return []
-    const occ = occupied()
-    return buildStaticLinks(compiled, store.layout(), (_link, from, to) => isoWaypoints(from, to, occ))
-  })
-
-  const linkLedger = createMemo(() => attemptsByLink(store.replay()))
-  const startName = () => {
-    const seed = store.compiled()?.effective.initial_asset_id
-    return seed === undefined ? '—' : displayName(store.compiled(), seed)
-  }
-
-  const stateOf = (id: string) => assetState(store.replay(), id)
-  const assetSelected = (id: string) => {
-    const s = store.selection()
-    return s?.type === 'asset' && s.id === id
-  }
-  const linkStateOf = (id: string) => linkViewState(linkLedger().get(id))
-  const linkSelected = (id: string) => {
-    const s = store.selection()
-    if (s?.type !== 'attempt') return false
-    return store.replay().attempts[s.id]?.link_id === id
-  }
+  onCleanup(() => store.dispose())
 
   return (
-    <main class="app-shell">
-      <header class="topbar" aria-label="Scenario controls">
-        <section class="brand-block" aria-label="Product identity">
-          <p class="eyebrow">Threat Propagation Simulator</p>
-          <h1>rzero</h1>
-        </section>
-
-        <section class="status-strip" aria-label="Scenario">
-          <div class="status-scenario">
-            <span class="status-name">{BUILTIN_SCENARIO_LABEL}</span>
-            <span class="status-note">{BUILTIN_SCENARIO_NOTE}</span>
-          </div>
-          <dl class="status-metrics">
-            <div>
-              <dt>Starting host</dt>
-              <dd>{startName()} <span class="muted">configured</span></dd>
-            </div>
-            <div><dt>Hosts</dt><dd>{staticAssets().length}</dd></div>
-          </dl>
-        </section>
-
-        <section class="playback-nav" aria-label="Playback controls">
-          <span class="nav-step" aria-live="polite">
-            <Show when={store.hasRun()} fallback={<span class="muted">Not started</span>}>
-              Step {store.cursor()} / {store.totalEvents()}
-            </Show>
-          </span>
-          <div class="nav-buttons">
-            <button
-              type="button"
-              class="secondary"
-              onClick={() => store.restart()}
-              disabled={store.phase() !== 'ready' || store.atStart()}
-              aria-label="Restart replay at the beginning"
-            >⟲</button>
-            <button
-              type="button"
-              class="secondary"
-              onClick={() => store.stepBackward()}
-              disabled={store.phase() !== 'ready' || store.atStart()}
-              aria-label="Previous step"
-            >◀</button>
-            <button
-              type="button"
-              class="secondary"
-              onClick={() => store.stepForward()}
-              disabled={store.phase() !== 'ready' || store.atEnd()}
-              aria-label="Next step"
-            >▶</button>
-            <button type="button" class="nav-run" onClick={() => store.start()}>
-              {store.phase() === 'ready' ? 'Re-run' : 'Start'}
-            </button>
-          </div>
-        </section>
-      </header>
-
+    <div class="app" classList={{ 'mode-command': store.mode() === 'command' }}>
+      <Header store={store} />
       <Show when={store.phase() === 'error'}>
-        <div class="diagnostics-banner" role="alert">
+        <div class="diagnostics" role="alert">
           <strong>Scenario cannot run</strong>
           <ul>
-            <For each={store.diagnostics().filter((d) => d.severity === 'error')}>{(diagnostic) => (
-              <li><code>{diagnostic.code}</code> at <code>{diagnostic.path || '(root)'}</code> — {diagnostic.message}</li>
-            )}</For>
+            <For each={store.diagnostics().filter((d) => d.severity === 'error')}>
+              {(d) => (
+                <li>
+                  <code>{d.code}</code> at <code>{d.path || '(root)'}</code>: {d.message}
+                </li>
+              )}
+            </For>
           </ul>
         </div>
       </Show>
-
-      <section class="workspace">
-        <aside class="left-rail" aria-label="Host inventory">
-          <div class="panel-heading">
-            <p class="eyebrow">Inventory</p>
-            <h2>Hosts</h2>
-          </div>
-          <nav class="inventory-list" aria-label="Hosts">
-            <For each={staticAssets()}>{(asset) => (
-              <button
-                type="button"
-                class="inventory-item"
-                classList={{ 'inventory-selected': assetSelected(asset.id) }}
-                aria-pressed={assetSelected(asset.id)}
-                onClick={() => store.selectAsset(asset.id)}
-              >
-                <span class="inventory-id">{asset.label}</span>
-                <span class="inventory-tags">
-                  <Show when={asset.isSeed}><span class="dot dot-seed" title="configured starting host" /></Show>
-                  <span class={`state-badge state-${stateOf(asset.id)}`}>{stateOf(asset.id)}</span>
-                </span>
-              </button>
-            )}</For>
-          </nav>
-        </aside>
-
-        <div class="map-column">
-          <MapStage
-            assets={staticAssets()}
-            links={staticLinks()}
-            stateOf={stateOf}
-            assetSelected={assetSelected}
-            linkStateOf={linkStateOf}
-            linkSelected={linkSelected}
-            hasRun={store.hasRun()}
-            onSelectAsset={store.selectAsset}
-            onSelectLink={store.selectLink}
-          />
+      <main class="workspace">
+        <LeftPanel store={store} />
+        <div class="center">
+          <MetricCards store={store} />
+          <MapStage store={store} />
+          <EventLog store={store} />
         </div>
-
-        <Inspector store={store} />
-      </section>
-    </main>
+        <StepDetails store={store} />
+      </main>
+    </div>
   )
 }
 

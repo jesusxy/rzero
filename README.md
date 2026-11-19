@@ -31,7 +31,10 @@ bun run rzero story    fixtures/scenarios/001-five-node-baseline.json   # narrat
   only through `src/core/index.ts`.
 - `src/app/narration/` — plain-English step narration (`narrate`): display
   prose derived from event codes and facts, kept out of the core.
-- `src/components/`, `src/App.tsx` — Solid UI shell (prototype).
+- `src/components/`, `src/App.tsx`, `src/app/` — Solid UI: Story Mode walkthrough
+  (step list, isometric map, step details, autoplay) and Command Mode. Layout
+  target: `references/rzero-layout-mockup.png`. Open `?scenario=002` for the
+  segmented counterfactual.
 - `src/domain/`, `src/data/` — prototype UI mock types and data; illustrative
   only, see `docs/core-integration.md`.
 - `fixtures/scenarios/` — canonical synthetic scenarios (JSON and YAML).

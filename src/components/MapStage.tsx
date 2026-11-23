@@ -65,6 +65,11 @@ export function MapStage(props: { store: SimulationStore }) {
     }
   })
 
+  const aspect = () => {
+    const box = scene()?.box
+    if (!box) return '1.45'
+    return String(Math.min(1.45, Math.max(1, (box.maxX - box.minX) / (box.maxY - box.minY))))
+  }
   const [size, setSize] = createSignal({ w: 800, h: 520 })
   const compact = () => size().w < 520
   const sideOf = (id: string) => (compact() ? scene()!.compactSides.get(id)! : scene()!.sides.get(id)!)
@@ -255,7 +260,7 @@ export function MapStage(props: { store: SimulationStore }) {
 
   return (
     <section class="map-card" aria-label="Network map">
-      <div class="map-wrap" classList={{ compact: compact() }} ref={(el) => (wrap = el)}>
+      <div class="map-wrap" classList={{ compact: compact() }} style={{ 'aspect-ratio': aspect() }} ref={(el) => (wrap = el)}>
         <Show when={scene()}>
           {(s) => (
             <>

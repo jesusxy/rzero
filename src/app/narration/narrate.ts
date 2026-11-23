@@ -304,6 +304,10 @@ class NarrationContext {
         entry.id !== attempted.link_id &&
         capabilities.some((capability) => capability.service_id === entry.service_id),
     )
+    // A denied link can never get through, so it is not a way the target could
+    // still be reached; it is reported on its own.
+    const open = others.filter((entry) => entry.access !== 'deny')
+    const denied = others.filter((entry) => entry.access === 'deny')
     // Another link only matters if its source is (or becomes) compromised and
     // the link has not been tried yet. Read from the replay state at this step,
     // so nothing later in the run is revealed.
@@ -311,8 +315,8 @@ class NarrationContext {
     const compromised = new Set(state.compromised)
     const tried = new Set(Object.values(state.attempts).map((attempt) => attempt.link_id))
     const sourcesOf = (entries: typeof others) => [...new Set(entries.map((entry) => this.label(entry.source_id)))]
-    const waiting = sourcesOf(others.filter((entry) => !compromised.has(entry.source_id)))
-    const pending = sourcesOf(others.filter((entry) => compromised.has(entry.source_id) && !tried.has(entry.id)))
+    const waiting = sourcesOf(open.filter((entry) => !compromised.has(entry.source_id)))
+    const pending = sourcesOf(open.filter((entry) => compromised.has(entry.source_id) && !tried.has(entry.id)))
 
     const sentences: string[] = []
     if (moreOnLink) sentences.push(fill(STEP_TEXT.blocked.moreOptionsOnLink, vars))
@@ -321,8 +325,13 @@ class NarrationContext {
       const is = waiting.length === 1 ? 'is' : 'are'
       sentences.push(fill(STEP_TEXT.blocked.otherLinks, { ...vars, sources: joinList(waiting, 'or'), is }))
     }
+    if (denied.length > 0) {
+      const services = [...new Set(denied.map((entry) => entry.service_id))]
+      const traffic = services.length === 1 ? `${SERVICE_NAMES[services[0]!] ?? services[0]} traffic` : 'traffic'
+      sentences.push(fill(STEP_TEXT.blocked.otherLinksDenied, { ...vars, traffic, sources: joinList(sourcesOf(denied)) }))
+    }
     if (others.length === 0 && !moreOnLink) sentences.push(fill(STEP_TEXT.blocked.noOtherLinks, vars))
-    else if (others.length > 0 && pending.length === 0 && waiting.length === 0 && !moreOnLink) {
+    else if (open.length > 0 && denied.length === 0 && pending.length === 0 && waiting.length === 0 && !moreOnLink) {
       sentences.push(fill(STEP_TEXT.blocked.otherLinksExhausted, vars))
     }
     return sentences

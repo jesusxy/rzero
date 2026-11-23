@@ -266,8 +266,11 @@ export function assertEngineInvariants(run: RunResult): void {
   expect([...compromisedByEvents].sort()).toEqual([...run.state.compromised].sort())
   expect(compromisedByEvents.length).toBe(new Set(compromisedByEvents).size) // compromised at most once
 
+  // Walk parents in compromise (event) order: state.parents is sorted by asset
+  // ID, which matches compromise order only when IDs happen to sort that way.
+  const parentOf = new Map(run.state.parents.map((parent) => [parent.asset_id, parent]))
   const seen = new Set<string>([run.state.seed_id])
-  for (const parent of run.state.parents) {
+  for (const parent of compromisedByEvents.flatMap((id) => parentOf.get(id) ?? [])) {
     expect(seen.has(parent.parent_id)).toBe(true) // parent already compromised
     expect(run.state.hops[parent.parent_id]!).toBeLessThan(parent.hop)
     expect(parent.hop).toBe(run.state.hops[parent.parent_id]! + 1)

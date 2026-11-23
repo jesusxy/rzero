@@ -208,6 +208,8 @@ export const STEP_TEXT = {
     otherLinks: '{target} could still be reached if {sources} {is} compromised.',
     /** Other links from already-compromised sources that have not been tried yet. */
     otherLinksPending: '{sources} will still try {target} over another link.',
+    /** Other links to the target that the network denies. Tokens {traffic}, {sources}. */
+    otherLinksDenied: "The network doesn't allow {traffic} to {target} from {sources} either.",
     /** Other links exist, but every one has already been tried. */
     otherLinksExhausted: 'Every other link to {target} has already been tried, so nothing else will.',
     noOtherLinks: 'No other host has a link to {target}, so nothing else will try.',

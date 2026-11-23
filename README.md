@@ -34,7 +34,8 @@ bun run rzero story    fixtures/scenarios/001-five-node-baseline.json   # narrat
 - `src/components/`, `src/App.tsx`, `src/app/` — Solid UI: Story Mode walkthrough
   (step list, isometric map, step details, autoplay) and Command Mode. Layout
   target: `references/rzero-layout-mockup.png`. Open `?scenario=002` for the
-  segmented counterfactual.
+  segmented counterfactual, or `?scenario=wannacry` / `?scenario=wannacry-segmented` for
+  the WannaCry small office.
 - `src/domain/`, `src/data/` — prototype UI mock types and data; illustrative
   only, see `docs/core-integration.md`.
 - `fixtures/scenarios/` — canonical synthetic scenarios (JSON and YAML).

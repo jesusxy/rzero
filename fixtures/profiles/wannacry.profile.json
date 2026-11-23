@@ -1,0 +1,118 @@
+{
+  "id": "wannacry",
+  "version": "1",
+  "name": "WannaCry (May 2017)",
+  "scope": "family",
+  "review_status": "reviewed",
+  "sources": [
+    {
+      "id": "talos-2017",
+      "kind": "research",
+      "title": "Player 3 Has Entered the Game: Say Hello to 'WannaCry' (Cisco Talos)",
+      "url": "https://blog.talosintelligence.com/wannacry",
+      "accessed_on": "2026-11-19",
+      "publication_date": "2017-05-12",
+      "locator": "Executive Summary; Malware Analysis; Infrastructure Analysis",
+      "claim_summary": "WannaCry scans TCP 445 on its own subnet and on random internet addresses, exploits the MS17-010 SMB flaw with ETERNALBLUE, then uses the DOUBLEPULSAR backdoor to install and run itself on the target. If its kill-switch domain answers an HTTP request, it stops."
+    },
+    {
+      "id": "attack-s0366",
+      "kind": "attack",
+      "title": "MITRE ATT&CK: WannaCry (S0366)",
+      "url": "https://attack.mitre.org/software/S0366/",
+      "accessed_on": "2026-11-19",
+      "external_object_id": "S0366",
+      "external_version": "1.1",
+      "locator": "Techniques Used: T1210, T1018, T1016, T1570",
+      "claim_summary": "ATT&CK maps WannaCry to Exploitation of Remote Services (T1210) using an SMBv1 exploit, to Remote System Discovery (T1018) of its local segment, and to Lateral Tool Transfer (T1570) over SMB. It lists no credential-access or credential-based lateral movement techniques."
+    },
+    {
+      "id": "ms17-010",
+      "kind": "research",
+      "title": "MS17-010: Security update for Windows SMB Server: March 14, 2017 (Microsoft KB4013389)",
+      "url": "https://support.microsoft.com/help/4013389",
+      "accessed_on": "2026-11-19",
+      "publication_date": "2017-03-14",
+      "locator": "Summary",
+      "claim_summary": "Microsoft's March 2017 update fixes SMBv1 server flaws that allow remote code execution when an attacker sends specially crafted messages to an SMBv1 server. Unpatched hosts with SMBv1 enabled are exposed."
+    },
+    {
+      "id": "uscert-ta17-132a",
+      "kind": "research",
+      "title": "Alert TA17-132A: Indicators Associated With WannaCry Ransomware (US-CERT / CISA)",
+      "url": "https://www.cisa.gov/ncas/alerts/TA17-132A",
+      "accessed_on": "2026-11-19",
+      "publication_date": "2017-05-12",
+      "locator": "Overview; Recommended Steps for Prevention",
+      "claim_summary": "US-CERT recommends applying MS17-010, disabling SMBv1 where the patch cannot be applied, segregating networks and limiting unnecessary lateral communications. Its other advice (backups, user awareness, email filtering) concerns damage and the first infection, not spread between hosts, so it is not modeled."
+    },
+    {
+      "id": "nviso-2017",
+      "kind": "research",
+      "title": "WCry ransomware: additional analysis (NVISO Labs)",
+      "url": "https://blog.nviso.eu/2017/05/15/wcry-ransomware-additional-analysis/",
+      "accessed_on": "2026-11-19",
+      "publication_date": "2017-05-15",
+      "locator": "Kill switch",
+      "claim_summary": "The kill-switch check is not proxy-aware, so it does not protect networks that reach the internet only through a proxy. A second kill-switch domain was found in later samples."
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "eternalblue-smb",
+      "label": "EternalBlue SMBv1 exploit (MS17-010)",
+      "mechanism": "remote_exploit",
+      "service_id": "smb",
+      "target_platforms": [
+        "windows"
+      ],
+      "vulnerability_id": "MS17-010",
+      "evidence_ids": [
+        "talos-2017",
+        "attack-s0366",
+        "ms17-010"
+      ],
+      "confidence": "high",
+      "assumptions": [
+        "MS17-010 'present' means the target is unpatched AND has SMBv1 enabled. A host with SMBv1 disabled should be modeled with MS17-010 'absent'.",
+        "A successful exploit is assumed to install and run WannaCry through DOUBLEPULSAR. Exploit reliability is not modeled.",
+        "Windows versions are not distinguished. In Kryptos Logic's 2017 lab tests, WannaCry's exploit crashed Windows XP instead of infecting it, so a scenario should mark an XP host's MS17-010 fact as 'unknown' rather than 'present'. (No source attached: the reports found during review were no longer reachable.)",
+        "Scanning order and timing are not modeled: every modeled SMB link from a compromised host is attempted."
+      ],
+      "technique_refs": [
+        "T1210",
+        "T1018"
+      ]
+    }
+  ],
+  "limitations": [
+    "Kill switch not modeled. Before spreading, the original sample tried to reach a nonsense web domain and stopped if it got an answer. Nobody owned the domain until a researcher (MalwareTech) registered it on 12 May 2017, which halted new infections. Later variants changed or removed the domain, and the check failed on networks that reach the internet through a proxy. See the 'Deferred' section of docs/c2-exfiltration.md.",
+    "Internet-wide scanning not modeled. WannaCry looked for targets by trying to connect on TCP 445 to every address on its own subnet and to random public IP addresses. rzero only tries the links drawn in the scenario, which stand in for the local search; the random internet search has no equivalent.",
+    "Initial access not modeled. How the first host was infected is not part of this profile; the scenario supplies the starting host.",
+    "Existing DOUBLEPULSAR backdoors not modeled. WannaCry could install itself through a backdoor already present on a host without re-exploiting it.",
+    "No credential-based movement. WannaCry spread by exploit alone, so the profile has no remote_execution capability (unlike NotPetya).",
+    "Tor-based command and control, file encryption and shadow-copy deletion are outside rzero/1's propagation model.",
+    "RDP session hijacking (T1563.002) runs the malware in other sessions on an already infected host; it is not movement between hosts.",
+    "SMB over TCP 445 only, as Talos reports. Some reports also mention TCP 139."
+  ],
+  "metadata": {
+    "aliases": [
+      "WanaCry",
+      "WanaCrypt0r",
+      "WCry",
+      "WannaCrypt"
+    ],
+    "first_seen": "2017-05-12",
+    "kill_switch_domain": "iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea[.]com",
+    "review_decisions": {
+      "doublepulsar_preinstalled": "limitation, not a capability: a capability would force every network to state each host's backdoor status",
+      "vulnerability_id": "MS17-010, because that is how patch status is tracked",
+      "variant": "original 12 May 2017 sample only",
+      "confidence": "high: three independent sources agree on the SMB exploit",
+      "learner_summary": "deferred: needs a new profile field (schema change)"
+    },
+    "drafted_by": "Claude",
+    "reviewed_by": "J$ (owner)",
+    "reviewed_on": "2026-11-23"
+  }
+}

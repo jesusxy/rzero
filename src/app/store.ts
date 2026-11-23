@@ -53,7 +53,9 @@ export function createSimulationStore(search = typeof window === 'undefined' ? '
   const [diagnostics] = createSignal<readonly Diagnostic[]>(prepared.diagnostics)
   const [compiled] = createSignal<CompiledScenario | null>(preparedCompiled)
   const [layout] = createSignal<ReadonlyMap<string, GridPosition>>(
-    preparedCompiled === null ? EMPTY_LAYOUT : computeLayout(preparedCompiled.effective.network.assets),
+    preparedCompiled === null
+      ? EMPTY_LAYOUT
+      : computeLayout(preparedCompiled.effective.network.assets, preparedCompiled.effective.initial_asset_id),
   )
   const [run, setRun] = createSignal<RunResult | null>(null)
   const [cursor, setCursor] = createSignal(0)

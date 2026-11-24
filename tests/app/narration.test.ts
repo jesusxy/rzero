@@ -590,4 +590,11 @@ describe('UI-facing fields', () => {
       chips: ['SMB', 'Windows', 'Synthetic'],
     })
   })
+
+  test("a profile's own summary is used when it has one", () => {
+    const wannacry = story('wannacry', fixture('wannacry-small-office.json')).scenario.effective.profile
+    expect(describeProfile(wannacry).summary).toBe(
+      'WannaCry breaks into Windows machines missing the March 2017 MS17-010 patch, using a leaked exploit (EternalBlue) against file sharing (SMBv1).',
+    )
+  })
 })

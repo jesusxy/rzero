@@ -81,7 +81,7 @@ Exact rzero/1 definition: `input_digest` is the lowercase hex SHA-256 of the UTF
 - network: segment IDs; per asset, every fact except `label` and `metadata` (`id`, `kind`, `platform`, `segment_id`, `critical`, `isolated`, services, vulnerability facts, `credential_ids`); per link, every field except `metadata`; per credential, `id` and grants.
 - profile: `id`, `version`, `scope`, `sha256` when present, `review_status`, source `id` and `kind`, and per capability `id`, `mechanism`, `service_id`, `target_platforms`, `vulnerability_id` or `minimum_privilege`, `evidence_ids` and `confidence`.
 
-Excluded: scenario `id`/`name`, every label/name/title, prose (`claim_summary`, assumptions, limitations), URLs, ATT&CK/MBC navigation references, intervention IDs and all metadata. Because the digest identifies the effective input, a scenario that denies `bd` through an intervention has the same digest as one that authors `bd` as denied. The intervention manifest that explains the difference is kept beside the digest.
+Excluded: scenario `id`/`name`, every label/name/title, prose (the profile `summary`, `claim_summary`, assumptions, limitations), URLs, ATT&CK/MBC navigation references, intervention IDs and all metadata. Because the digest identifies the effective input, a scenario that denies `bd` through an intervention has the same digest as one that authors `bd` as denied. The intervention manifest that explains the difference is kept beside the digest.
 
 A missing vulnerability entry and an explicit `unknown` entry produce different digests. They evaluate identically, but the snapshot preserves what was actually stated.
 

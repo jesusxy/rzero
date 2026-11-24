@@ -16,7 +16,8 @@
   --active-border: #a9c3ee;
   --unknown: #6b3fb5;
   --unknown-fill: #f3edfb;
-  --route-idle: #9aa4af;
+  --route-idle: #cdd2d9;
+  --route-tried: #8f98a4;
   --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
   --sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 

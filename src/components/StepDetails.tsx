@@ -238,6 +238,10 @@ function Requirements(props: { checks: readonly Check[]; command: boolean }) {
 
 function Evidence(props: { store: SimulationStore }) {
   const store = props.store
+  const command = () => store.mode() === 'command'
+  const [open, setOpen] = createSignal(false)
+  const profile = () => store.compiled()?.effective.profile
+  const shortName = () => (profile()?.name ?? '').replace(/\s*\([^)]*\)\s*$/, '')
   const sources = createMemo(() => {
     const compiled = store.compiled()
     const step = store.steps()[store.stepIndex()]
@@ -256,20 +260,57 @@ function Evidence(props: { store: SimulationStore }) {
   return (
     <Show when={sources().length > 0}>
       <div class="evidence">
-        <p class="eyebrow">Why the malware can do this</p>
-        <For each={sources()}>
-          {(source) => (
-            <div class="evidence-item">
-              <p class="evidence-title">{source.title}</p>
-              <p class="evidence-claim">
-                <Text value={source.claim_summary} />
-              </p>
-              <p class="evidence-meta">
-                {SOURCE_KINDS[source.kind]} · {source.id}
-              </p>
-            </div>
-          )}
-        </For>
+        <Show
+          when={command()}
+          fallback={
+            <>
+              <p class="eyebrow">How {shortName()} does this</p>
+              <Show when={profile()?.summary}>
+                {(summary) => (
+                  <p class="evidence-summary">
+                    <Text value={summary()} />
+                  </p>
+                )}
+              </Show>
+              <button type="button" class="link-button sources-toggle" aria-expanded={open()} onClick={() => setOpen(!open())}>
+                Sources ({sources().length}) <span aria-hidden="true">{open() ? '⌄' : '›'}</span>
+              </button>
+              <Show when={open()}>
+                <ul class="source-list">
+                  <For each={sources()}>
+                    {(source) => (
+                      <li>
+                        <Show when={source.url} fallback={<span class="source-title">{source.title}</span>}>
+                          {(url) => (
+                            <a class="source-title" href={url()} target="_blank" rel="noreferrer">
+                              {source.title}
+                            </a>
+                          )}
+                        </Show>
+                        <span class="evidence-meta">{SOURCE_KINDS[source.kind]}</span>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
+            </>
+          }
+        >
+          <p class="eyebrow">Why the malware can do this</p>
+          <For each={sources()}>
+            {(source) => (
+              <div class="evidence-item">
+                <p class="evidence-title">{source.title}</p>
+                <p class="evidence-claim">
+                  <Text value={source.claim_summary} />
+                </p>
+                <p class="evidence-meta">
+                  {SOURCE_KINDS[source.kind]} · {source.id}
+                </p>
+              </div>
+            )}
+          </For>
+        </Show>
       </div>
     </Show>
   )

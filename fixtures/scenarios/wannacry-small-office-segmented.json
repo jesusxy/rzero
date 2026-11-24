@@ -235,6 +235,7 @@
     "id": "wannacry",
     "version": "1",
     "name": "WannaCry (May 2017)",
+    "summary": "WannaCry breaks into Windows machines missing the March 2017 MS17-010 patch, using a leaked exploit (EternalBlue) against file sharing (SMBv1).",
     "scope": "family",
     "review_status": "reviewed",
     "sources": [

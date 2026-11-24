@@ -593,22 +593,6 @@
   fill: #f1c0b5;
 }
 
-.node.current .face {
-  stroke: var(--active);
-}
-
-.node.current .face-top {
-  fill: var(--active-fill);
-}
-
-.node.current .face-left {
-  fill: #d6e3f8;
-}
-
-.node.current .face-right {
-  fill: #c3d4f2;
-}
-
 .ring {
   fill: none;
 }
@@ -635,50 +619,29 @@
 
 .arrowhead {
   fill: currentColor;
+  stroke: none;
 }
 
-.route-untried {
+.ink-idle {
   color: var(--route-idle);
 }
 
-.route-succeeded {
+.ink-tried {
+  color: var(--route-tried);
+}
+
+.ink-spread {
   color: var(--compromised);
 }
 
-.route-pending {
+.ink-current {
   color: var(--active);
 }
 
-.route-indeterminate {
-  color: var(--unknown);
-}
-
-.route-blocked {
-  color: var(--route-idle);
-}
-
-.route-blocked.current .before {
-  color: var(--active);
-}
-
-.route-blocked .after {
-  color: #b9c1ca;
-}
-
-.barrier {
+.tick {
   fill: none;
   stroke: var(--blocked);
   stroke-linecap: round;
-}
-
-.route.flowing .route-line:not(.after) {
-  animation: route-flow 0.7s linear infinite;
-}
-
-@keyframes route-flow {
-  to {
-    stroke-dashoffset: var(--dash-cycle);
-  }
 }
 
 .map-overlay {
@@ -691,6 +654,10 @@
   position: absolute;
   transform: translate(-50%, -100%);
   color: var(--muted);
+  text-shadow:
+    0 0 3px var(--map),
+    0 0 3px var(--map),
+    0 0 2px var(--map);
   font: 500 11px var(--mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -756,7 +723,6 @@
 
 .map-wrap.compact .nl-status,
 .map-wrap.compact .route-chip,
-.map-wrap.compact .route-tag,
 .map-wrap.compact .district-label {
   font-size: 10px;
 }
@@ -773,25 +739,19 @@
   box-shadow: 0 1px 2px rgba(31, 35, 40, 0.25);
 }
 
-.route-tag {
+.route-badge {
   position: absolute;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
   transform: translate(-50%, -50%);
-  padding: 2px 8px;
-  border-radius: 3px;
-  font: 600 11.5px var(--mono);
-  white-space: nowrap;
-}
-
-.tag-blocked {
-  border: 1px solid var(--blocked-border);
-  background: var(--blocked-fill);
-  color: var(--blocked);
-}
-
-.tag-unknown {
-  border: 1px solid #c9b5ea;
+  border: 1.5px solid var(--unknown);
+  border-radius: 50%;
   background: var(--unknown-fill);
   color: var(--unknown);
+  font: 700 10.5px var(--mono);
+  line-height: 1;
 }
 
 .map-tools {
@@ -818,12 +778,6 @@
   gap: 8px;
 }
 
-.legend-hint {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 11.5px;
-}
-
 .lg-swatch {
   width: 13px;
   height: 13px;
@@ -832,8 +786,9 @@
 }
 
 .lg-line {
+  position: relative;
   width: 22px;
-  border-top: 2px solid;
+  border-top: 1.5px solid;
 }
 
 .lg-spread {
@@ -841,18 +796,38 @@
 }
 
 .lg-current {
-  border-top: 2px dashed var(--active);
+  border-top: 2px solid var(--active);
+}
+
+.lg-tried {
+  border-top: 1.5px solid var(--route-tried);
+}
+
+.lg-tick {
+  position: absolute;
+  top: -7px;
+  right: 3px;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--blocked);
 }
 
 .lg-idle {
   border-top: 1.5px solid var(--route-idle);
 }
 
-.lg-bar {
-  width: 4px;
+.lg-badge {
+  display: grid;
+  place-items: center;
+  width: 15px;
   height: 15px;
-  border-radius: 2px;
-  background: var(--blocked);
+  border: 1.5px solid var(--unknown);
+  border-radius: 50%;
+  background: var(--unknown-fill);
+  color: var(--unknown);
+  font: 700 9.5px var(--mono);
+  line-height: 1;
 }
 
 .event-log {
@@ -1136,6 +1111,42 @@
   font: 400 11.5px var(--mono);
 }
 
+.evidence-summary {
+  margin: 0 0 2px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.sources-toggle {
+  min-height: 36px;
+  padding: 0;
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.source-list {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source-list li {
+  display: grid;
+  gap: 2px;
+}
+
+.source-title {
+  color: var(--ink);
+  font: 500 13.5px/1.45 var(--sans);
+}
+
+a.source-title {
+  color: var(--active);
+}
+
 .details-actions {
   display: flex;
   flex-direction: column;
@@ -1270,20 +1281,12 @@
     border-right: 0;
   }
 
-  .legend-hint {
-    margin-left: 0;
-  }
-
   .log-count {
     display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .route.flowing .route-line {
-    animation: none;
-  }
-
   .chevron {
     transition: none;
   }

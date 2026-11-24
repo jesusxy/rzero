@@ -141,6 +141,7 @@ export function canonicalProfile(profile: MalwareProfile): MalwareProfile {
       id: profile.id,
       version: profile.version,
       name: profile.name,
+      ...(profile.summary === undefined ? {} : { summary: profile.summary }),
       scope: profile.scope,
       ...(profile.sha256 === undefined ? {} : { sha256: profile.sha256 }),
       review_status: profile.review_status,
@@ -160,7 +161,7 @@ export function canonicalInterventions(interventions: readonly Intervention[]): 
 
 /**
  * The facts that determine simulation behavior. Excludes labels, names, titles,
- * free text, navigation references, scenario identity, intervention IDs and all
+ * the profile summary, free text, navigation references, scenario identity, intervention IDs and all
  * metadata (including layout). Keeps profile revision, scope, review status,
  * capability claims and evidence identifiers.
  */

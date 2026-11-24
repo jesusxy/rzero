@@ -52,7 +52,7 @@ export type ProfileDescription = {
   readonly chips: readonly string[]
 }
 
-/** A one-paragraph, plain-English summary of a malware profile. */
+/** A one-paragraph, plain-English summary of a malware profile: its own `summary` when it has one, else one built from its capabilities. */
 export function describeProfile(profile: MalwareProfile): ProfileDescription {
   const unique = (items: string[]) => [...new Set(items)]
   const platforms = (capability: Capability) => joinList(capability.target_platforms.map(platformName), 'or')
@@ -72,5 +72,9 @@ export function describeProfile(profile: MalwareProfile): ProfileDescription {
     .replace('{clauses}', joinList(unique(clauses), 'or'))
     .replace('{services}', joinList(services, 'or'))
   const platformChips = unique(profile.capabilities.flatMap((capability) => capability.target_platforms.map(platformName)))
-  return { name: profile.name, summary, chips: [...services, ...platformChips, PROFILE_TEXT.scope[profile.scope]] }
+  return {
+    name: profile.name,
+    summary: profile.summary ?? summary,
+    chips: [...services, ...platformChips, PROFILE_TEXT.scope[profile.scope]],
+  }
 }

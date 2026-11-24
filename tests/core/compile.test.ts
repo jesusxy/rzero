@@ -142,6 +142,25 @@ describe('canonicalization and identity (scenario 010 input invariants)', () => 
     expect(expectCompiled(compileScenario(document)).input_digest).not.toBe(compile001().input_digest)
   })
 
+  test('the display-only profile summary is kept but does not change the input digest', () => {
+    const withSummary = scenario001()
+    withSummary.profile.summary = 'A synthetic worm that spreads over SMB.'
+    const reworded = scenario001()
+    reworded.profile.summary = 'Reworded for learners.'
+    const a = expectCompiled(compileScenario(withSummary))
+    const b = expectCompiled(compileScenario(reworded))
+    expect(a.effective.profile.summary).toBe('A synthetic worm that spreads over SMB.')
+    expect(a.input_digest).toBe(compile001().input_digest)
+    expect(b.input_digest).toBe(compile001().input_digest)
+    expect(a.profile_content_digest).not.toBe(b.profile_content_digest)
+  })
+
+  test('an empty profile summary is rejected', () => {
+    const document = scenario001()
+    document.profile.summary = ''
+    expect(compileScenario(document).ok).toBe(false)
+  })
+
   test('the profile content digest tracks text that the semantic digest ignores', () => {
     const document = scenario001()
     document.profile.capabilities[0].assumptions = ['Reworded assumption.']

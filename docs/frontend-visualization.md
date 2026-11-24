@@ -4,13 +4,22 @@
 
 **Layout target:** `references/rzero-layout-mockup.png` is the target layout for Story Mode. Match its structure: a header with brand, scenario, Story/Command toggle, a step counter with a segmented progress bar and Restart/Back/Play/Next; a left panel with the malware profile card, the step list and hosts grouped by segment; a center column with metric cards, the isometric map, a legend strip and a collapsed event log; and a right panel with step details. Its light palette (ink `#1F2328`, page `#EEF0F3`, map `#F4F5F7`, compromised `#B3341F`, blocked `#9A5B00`, current `#1D5FD1`) and IBM Plex Mono/Sans typography are the initial theme.
 
+**Map target:** `references/rzero-office-step.png` (the WannaCry office mid-replay, a route stopped by a segmentation rule) and `references/rzero-office-results.png` (the same run at its results step) set the map's layout, routes and host labels, and the short "How {malware} does this" section of the step panel. Other parts of those screens (the defense card, the scenario switcher, the comparison metrics) are not built yet.
+
 **Style reference:** `references/protocol-explorer.png`, a step-by-step protocol walkthrough (numbered step list, "Step N of M" details panel, packet table under the diagram). Its pacing and step/detail structure, monospaced typography and restrained borders inform Story Mode; its dark palette does not. Keep palette values in tokens so another theme can be added without changing semantics. The image of the social post provides context for the concept; it is not an additional interface to reproduce.
 
 ## Specific design decisions
 
 Use an isometric projection rather than a generic flat force-directed graph. Assets are small architectural forms on a grid; segments occupy labeled districts; directional routes join assets. Workstations, servers and controllers have consistent silhouette families. Building height is decorative within each family and must not imply risk, data volume or privilege. A legend explains silhouettes and colors.
 
-Keep labels legible and asset IDs available on selection. Avoid overlapping labels through a stable layout, zoom thresholds and segment focus. Use fixed segment blocks with asset positions sorted by ID; topology edits should not cause the whole city to move. Layout is presentation metadata excluded from simulation identity.
+Keep labels legible and asset IDs available on selection. Avoid overlapping labels through a stable layout, zoom thresholds and segment focus. Layout is presentation metadata excluded from simulation identity.
+
+The layout is flow-ordered and segment-aware, and uses only the static network (never run results, never link access), so a run with and without a defense lays out identically:
+
+- Hop distance comes from a breadth-first walk of the links from the initial asset (ties by ID). Hop distance runs along one iso axis and siblings along the other, on integer grid cells. The child that leads to the most further hosts stays in line with its parent; its siblings spread either side.
+- Each segment is a district with a dashed outline and its label at the top corner. The starting host's district comes first; districts never overlap, and empty "streets" separate hop columns and districts.
+- Routes run along the grid: out of the source along the hop axis into a street, along the street, then into the target, with at most two turns. Routes from one source share a trunk before splitting; each source has its own channel in a street. Routes are drawn under hosts, trimmed at the host's silhouette, with one small arrowhead sized in screen pixels.
+- Host labels: the name in bold; one muted line only for meaningful markers (start, critical, a non-Windows platform); one coloured status word only when something happened (Compromised, Blocked, Unknown). Reasons are not tagged on the map; they live in the step panel.
 
 The pushback on the references is practical: faint linework and dense tiny text look attractive but can hide the reasons Rzero exists to show. Selected routes, current attempts, state labels and check results need clear contrast. A graph is not useful if only the animation can be seen.
 
@@ -32,9 +41,11 @@ Expose load/import, threat selection, initial asset selection and run before rep
 
 Persistent asset state is `modeled`, `discovered` or `compromised`. The seed is compromised from the initial event. A critical marker and isolation marker are independent attributes. Discovery changes outline emphasis; compromise changes fill/accent plus a visible status label.
 
-An attempt has `pending`, `succeeded`, `blocked` or `indeterminate` replay state. Use blue for active movement, red for compromise, a stopped-line symbol plus text for blocked, and a dashed line/question badge for indeterminate. Do not rely on color alone. A target with one blocked route may later turn compromised through another route.
+An attempt has `pending`, `succeeded`, `blocked` or `indeterminate` replay state. Routes are solid lines only, one meaning per style: not tried is thin light grey (`#CDD2D9`); tried and stopped is grey (`#8F98A4`) up to a short amber (`#9A5B00`) tick where it stopped (at the target district's edge for a network block, else at the turn into the target), then thin light grey; outcome unknown is grey with a small purple "?" badge near the target; spread is a heavier red (`#B3341F`); the current step is blue (`#1D5FD1`) with the capability chip travelling along it. Only one route is ever blue; when its step ends it takes its outcome style. The host status word backs up every colour, so colour is never the only signal. A target with one blocked route may later turn compromised through another route.
 
-Denied links can be shown as muted dashed routes before playback. Static absence of a route means no modeled link; do not draw an animated rejection across missing links.
+Static absence of a route means no modeled link; do not draw an animated rejection across missing links.
+
+The step panel's evidence section reads "How {profile name} does this": the profile's optional `summary`, then a "Sources (N)" link that expands to the supporting source titles and links. Without a summary it shows the expandable sources only. Command Mode keeps the full claim summaries.
 
 ## Inspector content
 

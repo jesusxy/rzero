@@ -1,0 +1,359 @@
+{
+  "model_version": "rzero/1",
+  "id": "wannacry-small-office",
+  "name": "WannaCry in a small office",
+  "network": {
+    "segments": [
+      {
+        "id": "office",
+        "label": "Office"
+      },
+      {
+        "id": "servers",
+        "label": "Servers"
+      }
+    ],
+    "assets": [
+      {
+        "id": "ws01",
+        "label": "WS-01",
+        "kind": "workstation",
+        "platform": "windows",
+        "segment_id": "office",
+        "critical": false,
+        "isolated": false,
+        "services": [
+          {
+            "id": "smb",
+            "transport": "tcp",
+            "port": 445,
+            "status": "enabled"
+          }
+        ],
+        "vulnerabilities": [
+          {
+            "id": "MS17-010",
+            "status": "present"
+          }
+        ],
+        "credential_ids": []
+      },
+      {
+        "id": "ws02",
+        "label": "WS-02",
+        "kind": "workstation",
+        "platform": "windows",
+        "segment_id": "office",
+        "critical": false,
+        "isolated": false,
+        "services": [
+          {
+            "id": "smb",
+            "transport": "tcp",
+            "port": 445,
+            "status": "enabled"
+          }
+        ],
+        "vulnerabilities": [
+          {
+            "id": "MS17-010",
+            "status": "present"
+          }
+        ],
+        "credential_ids": []
+      },
+      {
+        "id": "ws03",
+        "label": "WS-03",
+        "kind": "workstation",
+        "platform": "windows",
+        "segment_id": "office",
+        "critical": false,
+        "isolated": false,
+        "services": [
+          {
+            "id": "smb",
+            "transport": "tcp",
+            "port": 445,
+            "status": "enabled"
+          }
+        ],
+        "vulnerabilities": [
+          {
+            "id": "MS17-010",
+            "status": "absent"
+          }
+        ],
+        "credential_ids": []
+      },
+      {
+        "id": "ws04",
+        "label": "WS-04 (XP)",
+        "kind": "workstation",
+        "platform": "windows",
+        "segment_id": "office",
+        "critical": false,
+        "isolated": false,
+        "services": [
+          {
+            "id": "smb",
+            "transport": "tcp",
+            "port": 445,
+            "status": "enabled"
+          }
+        ],
+        "vulnerabilities": [
+          {
+            "id": "MS17-010",
+            "status": "unknown"
+          }
+        ],
+        "credential_ids": []
+      },
+      {
+        "id": "fs01",
+        "label": "FS-01",
+        "kind": "server",
+        "platform": "windows",
+        "segment_id": "servers",
+        "critical": true,
+        "isolated": false,
+        "services": [
+          {
+            "id": "smb",
+            "transport": "tcp",
+            "port": 445,
+            "status": "enabled"
+          }
+        ],
+        "vulnerabilities": [
+          {
+            "id": "MS17-010",
+            "status": "present"
+          }
+        ],
+        "credential_ids": []
+      },
+      {
+        "id": "dc01",
+        "label": "DC-01",
+        "kind": "controller",
+        "platform": "windows",
+        "segment_id": "servers",
+        "critical": true,
+        "isolated": false,
+        "services": [
+          {
+            "id": "smb",
+            "transport": "tcp",
+            "port": 445,
+            "status": "enabled"
+          }
+        ],
+        "vulnerabilities": [
+          {
+            "id": "MS17-010",
+            "status": "absent"
+          }
+        ],
+        "credential_ids": []
+      },
+      {
+        "id": "nas01",
+        "label": "NAS-01",
+        "kind": "server",
+        "platform": "linux",
+        "segment_id": "servers",
+        "critical": false,
+        "isolated": false,
+        "services": [
+          {
+            "id": "smb",
+            "transport": "tcp",
+            "port": 445,
+            "status": "enabled"
+          }
+        ],
+        "vulnerabilities": [],
+        "credential_ids": []
+      }
+    ],
+    "links": [
+      {
+        "id": "ws01-ws02",
+        "source_id": "ws01",
+        "target_id": "ws02",
+        "service_id": "smb",
+        "access": "allow"
+      },
+      {
+        "id": "ws01-ws03",
+        "source_id": "ws01",
+        "target_id": "ws03",
+        "service_id": "smb",
+        "access": "allow"
+      },
+      {
+        "id": "ws01-ws04",
+        "source_id": "ws01",
+        "target_id": "ws04",
+        "service_id": "smb",
+        "access": "allow"
+      },
+      {
+        "id": "ws02-fs01",
+        "source_id": "ws02",
+        "target_id": "fs01",
+        "service_id": "smb",
+        "access": "allow"
+      },
+      {
+        "id": "ws03-fs01",
+        "source_id": "ws03",
+        "target_id": "fs01",
+        "service_id": "smb",
+        "access": "allow"
+      },
+      {
+        "id": "ws02-dc01",
+        "source_id": "ws02",
+        "target_id": "dc01",
+        "service_id": "smb",
+        "access": "allow"
+      },
+      {
+        "id": "fs01-nas01",
+        "source_id": "fs01",
+        "target_id": "nas01",
+        "service_id": "smb",
+        "access": "allow"
+      }
+    ],
+    "credentials": []
+  },
+  "profile": {
+    "id": "wannacry",
+    "version": "1",
+    "name": "WannaCry (May 2017)",
+    "summary": "WannaCry breaks into Windows machines missing the March 2017 MS17-010 patch, using a leaked exploit (EternalBlue) against file sharing (SMBv1).",
+    "scope": "family",
+    "review_status": "reviewed",
+    "sources": [
+      {
+        "id": "talos-2017",
+        "kind": "research",
+        "title": "Player 3 Has Entered the Game: Say Hello to 'WannaCry' (Cisco Talos)",
+        "url": "https://blog.talosintelligence.com/wannacry",
+        "accessed_on": "2026-11-19",
+        "publication_date": "2017-05-12",
+        "locator": "Executive Summary; Malware Analysis; Infrastructure Analysis",
+        "claim_summary": "WannaCry scans TCP 445 on its own subnet and on random internet addresses, exploits the MS17-010 SMB flaw with ETERNALBLUE, then uses the DOUBLEPULSAR backdoor to install and run itself on the target. If its kill-switch domain answers an HTTP request, it stops."
+      },
+      {
+        "id": "attack-s0366",
+        "kind": "attack",
+        "title": "MITRE ATT&CK: WannaCry (S0366)",
+        "url": "https://attack.mitre.org/software/S0366/",
+        "accessed_on": "2026-11-19",
+        "external_object_id": "S0366",
+        "external_version": "1.1",
+        "locator": "Techniques Used: T1210, T1018, T1016, T1570",
+        "claim_summary": "ATT&CK maps WannaCry to Exploitation of Remote Services (T1210) using an SMBv1 exploit, to Remote System Discovery (T1018) of its local segment, and to Lateral Tool Transfer (T1570) over SMB. It lists no credential-access or credential-based lateral movement techniques."
+      },
+      {
+        "id": "ms17-010",
+        "kind": "research",
+        "title": "MS17-010: Security update for Windows SMB Server: March 14, 2017 (Microsoft KB4013389)",
+        "url": "https://support.microsoft.com/help/4013389",
+        "accessed_on": "2026-11-19",
+        "publication_date": "2017-03-14",
+        "locator": "Summary",
+        "claim_summary": "Microsoft's March 2017 update fixes SMBv1 server flaws that allow remote code execution when an attacker sends specially crafted messages to an SMBv1 server. Unpatched hosts with SMBv1 enabled are exposed."
+      },
+      {
+        "id": "uscert-ta17-132a",
+        "kind": "research",
+        "title": "Alert TA17-132A: Indicators Associated With WannaCry Ransomware (US-CERT / CISA)",
+        "url": "https://www.cisa.gov/ncas/alerts/TA17-132A",
+        "accessed_on": "2026-11-19",
+        "publication_date": "2017-05-12",
+        "locator": "Overview; Recommended Steps for Prevention",
+        "claim_summary": "US-CERT recommends applying MS17-010, disabling SMBv1 where the patch cannot be applied, segregating networks and limiting unnecessary lateral communications. Its other advice (backups, user awareness, email filtering) concerns damage and the first infection, not spread between hosts, so it is not modeled."
+      },
+      {
+        "id": "nviso-2017",
+        "kind": "research",
+        "title": "WCry ransomware: additional analysis (NVISO Labs)",
+        "url": "https://blog.nviso.eu/2017/05/15/wcry-ransomware-additional-analysis/",
+        "accessed_on": "2026-11-19",
+        "publication_date": "2017-05-15",
+        "locator": "Kill switch",
+        "claim_summary": "The kill-switch check is not proxy-aware, so it does not protect networks that reach the internet only through a proxy. A second kill-switch domain was found in later samples."
+      }
+    ],
+    "capabilities": [
+      {
+        "id": "eternalblue-smb",
+        "label": "EternalBlue SMBv1 exploit (MS17-010)",
+        "mechanism": "remote_exploit",
+        "service_id": "smb",
+        "target_platforms": [
+          "windows"
+        ],
+        "vulnerability_id": "MS17-010",
+        "evidence_ids": [
+          "talos-2017",
+          "attack-s0366",
+          "ms17-010"
+        ],
+        "confidence": "high",
+        "assumptions": [
+          "MS17-010 'present' means the target is unpatched AND has SMBv1 enabled. A host with SMBv1 disabled should be modeled with MS17-010 'absent'.",
+          "A successful exploit is assumed to install and run WannaCry through DOUBLEPULSAR. Exploit reliability is not modeled.",
+          "Windows versions are not distinguished. In Kryptos Logic's 2017 lab tests, WannaCry's exploit crashed Windows XP instead of infecting it, so a scenario should mark an XP host's MS17-010 fact as 'unknown' rather than 'present'. (No source attached: the reports found during review were no longer reachable.)",
+          "Scanning order and timing are not modeled: every modeled SMB link from a compromised host is attempted."
+        ],
+        "technique_refs": [
+          "T1210",
+          "T1018"
+        ]
+      }
+    ],
+    "limitations": [
+      "Kill switch not modeled. Before spreading, the original sample tried to reach a nonsense web domain and stopped if it got an answer. Nobody owned the domain until a researcher (MalwareTech) registered it on 12 May 2017, which halted new infections. Later variants changed or removed the domain, and the check failed on networks that reach the internet through a proxy. See the 'Deferred' section of docs/c2-exfiltration.md.",
+      "Internet-wide scanning not modeled. WannaCry looked for targets by trying to connect on TCP 445 to every address on its own subnet and to random public IP addresses. rzero only tries the links drawn in the scenario, which stand in for the local search; the random internet search has no equivalent.",
+      "Initial access not modeled. How the first host was infected is not part of this profile; the scenario supplies the starting host.",
+      "Existing DOUBLEPULSAR backdoors not modeled. WannaCry could install itself through a backdoor already present on a host without re-exploiting it.",
+      "No credential-based movement. WannaCry spread by exploit alone, so the profile has no remote_execution capability (unlike NotPetya).",
+      "Tor-based command and control, file encryption and shadow-copy deletion are outside rzero/1's propagation model.",
+      "RDP session hijacking (T1563.002) runs the malware in other sessions on an already infected host; it is not movement between hosts.",
+      "SMB over TCP 445 only, as Talos reports. Some reports also mention TCP 139."
+    ],
+    "metadata": {
+      "aliases": [
+        "WanaCry",
+        "WanaCrypt0r",
+        "WCry",
+        "WannaCrypt"
+      ],
+      "first_seen": "2017-05-12",
+      "kill_switch_domain": "iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea[.]com",
+      "review_decisions": {
+        "doublepulsar_preinstalled": "limitation, not a capability: a capability would force every network to state each host's backdoor status",
+        "vulnerability_id": "MS17-010, because that is how patch status is tracked",
+        "variant": "original 12 May 2017 sample only",
+        "confidence": "high: three independent sources agree on the SMB exploit",
+        "learner_summary": "deferred: needs a new profile field (schema change)"
+      },
+      "drafted_by": "Claude",
+      "reviewed_by": "J$ (owner)",
+      "reviewed_on": "2026-11-23"
+    }
+  },
+  "initial_asset_id": "ws01",
+  "interventions": [],
+  "metadata": {
+    "synthetic_network": true,
+    "notes": "Teaching scenario for the reviewed WannaCry profile (fixtures/profiles/wannacry.profile.json); the office network is fictional. Every host runs SMB on TCP 445, none is isolated and none holds credentials. ws01 is the starting host (how it was first infected is outside the profile). ws02 is an unpatched workstation (MS17-010 present) that carries the spread toward the servers. ws03 is patched (MS17-010 absent), so the exploit has nothing to use there, and its own link to fs01 is never tried. ws04 is a Windows XP machine: per the profile's XP assumption its MS17-010 fact is 'unknown', so the attempt is indeterminate rather than a success. fs01 is the unpatched critical file server, the critical host WannaCry reaches. dc01 is a critical domain controller that is patched (MS17-010 absent). nas01 runs Linux, which the exploit does not target, and has no MS17-010 entry."
+  }
+}

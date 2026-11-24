@@ -14,7 +14,7 @@ import {
 } from '../core'
 import { narrate, type Narration } from './narration'
 import { selectBuiltinScenario } from './scenario'
-import { computeLayout, type GridPosition } from './layout'
+import { computeLayout, EMPTY_LAYOUT, type MapLayout } from './layout'
 import { backCursor, isStepComplete, nextCursor, stepIndexAt } from './view'
 
 export type Phase = 'prepared' | 'ready' | 'error'
@@ -35,8 +35,6 @@ export const PACE: { readonly dwell: number; readonly travel: number; readonly a
   },
 }
 
-const EMPTY_LAYOUT: ReadonlyMap<string, GridPosition> = new Map()
-
 function reducedMotionSignal() {
   const query = typeof window === 'undefined' ? null : window.matchMedia('(prefers-reduced-motion: reduce)')
   const [reduced, setReduced] = createSignal(query?.matches ?? false)
@@ -52,8 +50,10 @@ export function createSimulationStore(search = typeof window === 'undefined' ? '
   const [phase, setPhase] = createSignal<Phase>(prepared.ok ? 'prepared' : 'error')
   const [diagnostics] = createSignal<readonly Diagnostic[]>(prepared.diagnostics)
   const [compiled] = createSignal<CompiledScenario | null>(preparedCompiled)
-  const [layout] = createSignal<ReadonlyMap<string, GridPosition>>(
-    preparedCompiled === null ? EMPTY_LAYOUT : computeLayout(preparedCompiled.effective.network.assets),
+  const [layout] = createSignal<MapLayout>(
+    preparedCompiled === null
+      ? EMPTY_LAYOUT
+      : computeLayout(preparedCompiled.effective.network, preparedCompiled.effective.initial_asset_id),
   )
   const [run, setRun] = createSignal<RunResult | null>(null)
   const [cursor, setCursor] = createSignal(0)

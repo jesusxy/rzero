@@ -80,6 +80,8 @@ const required: Story[] = [
 const everything: Story[] = [
   ...required,
   story('002', fixture('002-counterfactual-segmentation.json')),
+  story('wannacry', fixture('wannacry-small-office.json')),
+  story('wannacry segmented', fixture('wannacry-small-office-segmented.json')),
   ...Object.entries(ALL_LABS).map(([name, spec]) => lab(name, spec)),
   ...Object.entries(extraLabs).map(([name, spec]) => lab(name, spec)),
   story('001 capped at 8', fixture('001-five-node-baseline.json'), runScenario(fixture('001-five-node-baseline.json'), { maxEvents: 8 })),
@@ -392,6 +394,21 @@ describe('wording rules', () => {
       ],
     })
     expect(twoWaiting.narrations[1]!.parts!.note).toBe('WS-02 could still be reached if WS-03 or SRV-01 are compromised.')
+    // A denied link is not a way through, even once its source is compromised.
+    const deniedOther = lab('denied other link', {
+      assets: { A: {}, B: {}, C: {} },
+      links: [
+        { id: 'ab', source: 'A', target: 'B', access: 'deny' },
+        { id: 'ac', source: 'A', target: 'C' },
+        { id: 'cb', source: 'C', target: 'B', access: 'deny' },
+      ],
+    })
+    expect(deniedOther.narrations[1]!.parts!.note).toBe("The network doesn't allow SMB traffic to WS-02 from WS-03 either.")
+    // WannaCry segmented: the boundary rule also denies WS-03 → FS-01.
+    const fs01 = story('wannacry segmented', fixture('wannacry-small-office-segmented.json')).narrations.find(
+      (n) => n.title === 'Blocked at FS-01',
+    )
+    expect(fs01!.parts!.note).toBe("The network doesn't allow SMB traffic to FS-01 from WS-03 either.")
     // 007 same service: a later capability on this very link will try next.
     const same = lab('007 same', ALL_LABS['007 same service']!).narrations[1]!.body
     expect(same).toContain('WS-01 still has another way to try WS-02 over SMB.')
@@ -508,6 +525,7 @@ describe('wording rules', () => {
       reason: 'it was cancelled',
       is: 'is',
       chip: 'SMB exploit',
+      traffic: 'SMB traffic',
     }
     const strings = (value: unknown): string[] =>
       typeof value === 'string' ? [value] : Object.values(value as Record<string, unknown>).flatMap(strings)
@@ -571,5 +589,12 @@ describe('UI-facing fields', () => {
       summary: 'Spreads host to host over SMB by exploiting LAB-SMB-1 on Windows machines. Needs an allowed network path and SMB turned on.',
       chips: ['SMB', 'Windows', 'Synthetic'],
     })
+  })
+
+  test("a profile's own summary is used when it has one", () => {
+    const wannacry = story('wannacry', fixture('wannacry-small-office.json')).scenario.effective.profile
+    expect(describeProfile(wannacry).summary).toBe(
+      'WannaCry breaks into Windows machines missing the March 2017 MS17-010 patch, using a leaked exploit (EternalBlue) against file sharing (SMBv1).',
+    )
   })
 })

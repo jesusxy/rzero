@@ -1,11 +1,12 @@
-import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import type { AttemptView, Capability } from '../core'
 import type { SimulationStore } from '../app/store'
-import { blockTag, capabilityChip, platformName, primaryCheck } from '../app/narration'
+import { capabilityChip, platformName, primaryCheck } from '../app/narration'
 import {
   bounds,
   districts,
   expand,
+  fractionAt,
   gridLines,
   labelSide,
   nodeShape,
@@ -13,6 +14,7 @@ import {
   routeGeometry,
   splitAt,
   toPoints,
+  toScene,
   trimEnd,
   type Point,
   type RouteGeometry,
@@ -24,12 +26,13 @@ type View = { x: number; y: number; w: number; h: number }
 
 const STATUS_WORDS: Record<Exclude<HostStatus, null>, string> = {
   compromised: 'Compromised',
-  blocked: 'Attempt blocked',
+  blocked: 'Blocked',
   unknown: 'Unknown',
 }
 
-const BARRIER_AT = 0.7
-const CHIP_REST = { blocked: 0.32, other: 0.5 }
+const STRAIGHT_STOP = 0.6
+const WIDTH = { idle: 1.25, tried: 1.5, spread: 2.6, current: 2.2 } as const
+type Ink = keyof typeof WIDTH
 
 export function MapStage(props: { store: SimulationStore }) {
   const store = props.store
@@ -40,34 +43,76 @@ export function MapStage(props: { store: SimulationStore }) {
     if (compiled === null) return null
     const layout = store.layout()
     const network = compiled.effective.network
-    const shapes = new Map(network.assets.map((asset) => [asset.id, nodeShape(asset, layout.get(asset.id) ?? { x: 15, y: 15 })]))
-    const routes = network.links.flatMap((link) => {
-      const route = routeGeometry(link, shapes)
-      return route === null ? [] : [route]
+    const shapes = new Map(
+      network.assets.map((asset) => [asset.id, nodeShape(asset, toScene(layout.cells.get(asset.id) ?? { x: 0, y: 0 }))]),
+    )
+    const segmentOf = new Map(network.assets.map((asset) => [asset.id, asset.segment_id]))
+    const boxOf = new Map(layout.districts.map((box) => [box.id, box]))
+    const routes = layout.routes.flatMap((route) => {
+      const across = segmentOf.get(route.source) !== segmentOf.get(route.target)
+      const geometry = routeGeometry(route, shapes, across ? boxOf.get(segmentOf.get(route.target)!) : undefined)
+      return geometry === null ? [] : [geometry]
     })
-    const areas = districts(network.assets, layout, network.segments)
-    const box = bounds([...[...shapes.values()].flatMap((shape) => shape.hull), ...areas.map((area) => area.labelAt)])
+    const areas = districts(layout.districts)
+    const seed = compiled.effective.initial_asset_id
+    const markers = new Map(
+      network.assets.map((asset) => [
+        asset.id,
+        [
+          asset.id === seed ? 'start' : null,
+          asset.critical ? 'critical' : null,
+          asset.platform === 'windows' ? null : platformName(asset.platform),
+        ].filter((marker): marker is string => marker !== null),
+      ]),
+    )
+    const box = bounds([
+      ...[...shapes.values()].flatMap((shape) => shape.hull),
+      ...routes.flatMap((route) => route.points),
+      ...areas.map((area) => area.labelAt),
+    ])
     return {
       assets: [...network.assets].sort((a, b) => shapes.get(a.id)!.anchor.y - shapes.get(b.id)!.anchor.y),
       shapes,
       routes,
       areas,
-      grid: gridLines(layout),
-      sides: new Map(network.assets.map((asset) => [asset.id, labelSide(asset.id, shapes.get(asset.id)!.anchor, routes)])),
+      markers,
+      grid: gridLines(layout.districts),
+      coarseGrid: gridLines(layout.districts, 2),
       compactSides: new Map(
-        network.assets.map((asset) => [asset.id, labelSide(asset.id, shapes.get(asset.id)!.anchor, routes, ['bottom', 'top'])]),
+        network.assets.map((asset) => [
+          asset.id,
+          labelSide(
+            asset.id,
+            shapes.get(asset.id)!.anchor,
+            routes,
+            ['bottom', 'top'],
+            areas.map((area) => area.labelAt),
+          ),
+        ]),
       ),
       capabilities: new Map(compiled.effective.profile.capabilities.map((capability) => [capability.id, capability])),
-      seed: compiled.effective.initial_asset_id,
       box,
       longestName: Math.max(...network.assets.map((asset) => asset.label.length)),
+      longestMarkers: Math.max(...[...markers.values()].map((list) => list.join(' · ').length)),
       longestId: Math.max(...network.assets.map((asset) => asset.id.length)),
     }
   })
 
+  const aspect = () => {
+    const box = scene()?.box
+    if (!box) return '1.45'
+    return String(Math.min(1.45, Math.max(1, (box.maxX - box.minX) / (box.maxY - box.minY))))
+  }
   const [size, setSize] = createSignal({ w: 800, h: 520 })
   const compact = () => size().w < 520
-  const sideOf = (id: string) => (compact() ? scene()!.compactSides.get(id)! : scene()!.sides.get(id)!)
+  const sideOf = (id: string) => (compact() ? scene()!.compactSides.get(id)! : 'right')
+
+  const labelBox = (anchor: Point, hull: ReturnType<typeof bounds>, scale: number) => ({
+    halfW: ((hull.maxX - hull.minX) / 2) * scale + 14,
+    halfH: ((hull.maxY - hull.minY) / 2) * scale + 8,
+    lift: compact() ? 0 : ((hull.maxY - hull.minY) / 2) * scale * 0.45,
+    anchor,
+  })
 
   const fitFor = (w: number, h: number): View => {
     const sc = scene()
@@ -75,8 +120,8 @@ export function MapStage(props: { store: SimulationStore }) {
     const { box } = sc
     const cw = box.maxX - box.minX
     const ch = box.maxY - box.minY
-    const statusW = 15 * (compact() ? 6.6 : 7.3)
-    const subW = compact() ? 0 : ('Windows · start'.length + (command() ? sc.longestId + 3 : 0)) * 6.6
+    const statusW = 11 * (compact() ? 6.6 : 7.3)
+    const subW = compact() ? 0 : (sc.longestMarkers + (command() ? sc.longestId + 3 : 0)) * 6.6
     const nameW = sc.longestName * (compact() ? 6.9 : 7.8)
     const labelW = Math.max(statusW, subW, nameW)
     const labelH = compact() ? 30 : 48
@@ -86,15 +131,13 @@ export function MapStage(props: { store: SimulationStore }) {
       need = { left: 0, right: 0, top: 0, bottom: 0 }
       for (const asset of sc.assets) {
         const shape = sc.shapes.get(asset.id)!
-        const hull = bounds(shape.hull)
         const ax = (shape.anchor.x - box.minX) * scale
         const ay = (shape.anchor.y - box.minY) * scale
-        const halfW = ((hull.maxX - hull.minX) / 2) * scale + 16
-        const halfH = ((hull.maxY - hull.minY) / 2) * scale + 12
+        const { halfW, halfH, lift } = labelBox(shape.anchor, bounds(shape.hull), scale)
         const side = sideOf(asset.id)
         const rect =
           side === 'right'
-            ? { l: ax + halfW, r: ax + halfW + labelW, t: ay - labelH / 2, b: ay + labelH / 2 }
+            ? { l: ax + halfW, r: ax + halfW + labelW, t: ay - lift - labelH / 2, b: ay - lift + labelH / 2 }
             : side === 'left'
               ? { l: ax - halfW - labelW, r: ax - halfW, t: ay - labelH / 2, b: ay + labelH / 2 }
               : side === 'top'
@@ -107,7 +150,7 @@ export function MapStage(props: { store: SimulationStore }) {
           bottom: Math.max(need.bottom, rect.b - ch * scale),
         }
       }
-      scale = Math.max(0.5, Math.min((w - need.left - need.right - 16) / cw, (h - need.top - need.bottom - 16) / ch))
+      scale = Math.max(0.5, Math.min((w - need.left - need.right - 40) / cw, (h - need.top - need.bottom - 40) / ch))
     }
     const vw = w / scale
     const vh = h / scale
@@ -191,13 +234,6 @@ export function MapStage(props: { store: SimulationStore }) {
     const step = currentStep()
     return step?.kind === 'attempt' ? (step.target_id ?? null) : null
   }
-  const upcomingOutcome = (attemptId: string) => {
-    for (const event of store.run()?.events ?? []) {
-      if (event.type === 'propagation_resolved' && event.attempt_id === attemptId) return event.outcome
-    }
-    return undefined
-  }
-  const flowing = () => store.playing() && !store.reducedMotion()
 
   type RouteView = {
     state: RouteState
@@ -217,45 +253,50 @@ export function MapStage(props: { store: SimulationStore }) {
     }
   }
 
-  const stroke = (width: number, dash?: [number, number]) => ({
-    'stroke-width': `${px(width)}`,
-    ...(dash ? { 'stroke-dasharray': `${px(dash[0])} ${px(dash[1])}`, '--dash-cycle': `${-px(dash[0] + dash[1])}` } : {}),
+  const stopFraction = (route: RouteGeometry, rv: RouteView) => {
+    const check = rv.attempt === undefined || rv.attempt.status === 'pending' ? undefined : primaryCheck(rv.attempt.checks)
+    if (check?.code === 'NETWORK_ACCESS' && route.entry !== null) return fractionAt(route.points, route.entry)
+    const corner = route.corners.at(-1)
+    return corner === undefined ? STRAIGHT_STOP : fractionAt(route.points, corner)
+  }
+  const chipFraction = (route: RouteGeometry, rv: RouteView) => {
+    const corner = route.corners[0]
+    const rest = corner === undefined ? STRAIGHT_STOP / 2 : fractionAt(route.points, corner)
+    return rv.state === 'pending' ? store.travel() * rest : rest
+  }
+  const badgeAt = (route: RouteGeometry) => route.corners.at(-1) ?? pointAt(route.points, 0.7).point
+  const inkOf = (rv: RouteView): Ink =>
+    rv.current ? 'current' : rv.state === 'succeeded' ? 'spread' : rv.state === 'untried' ? 'idle' : 'tried'
+  const LAYER: Record<Ink, number> = { idle: 0, tried: 1, spread: 2, current: 3 }
+  const layered = createMemo(() => {
+    const sc = scene()
+    if (sc === null) return []
+    const rank = new Map(sc.routes.map((route) => [route.linkId, LAYER[inkOf(routeView(route))]]))
+    return [...sc.routes].sort((a, b) => rank.get(a.linkId)! - rank.get(b.linkId)!)
   })
+
   const arrowhead = (points: readonly Point[]) => {
     const tip = points[points.length - 1]!
     const prev = points[points.length - 2] ?? tip
     const len = Math.hypot(tip.x - prev.x, tip.y - prev.y) || 1
     const dir = { x: (tip.x - prev.x) / len, y: (tip.y - prev.y) / len }
-    const back = { x: tip.x - dir.x * px(10), y: tip.y - dir.y * px(10) }
-    const half = px(4.5)
+    const back = { x: tip.x - dir.x * px(8), y: tip.y - dir.y * px(8) }
+    const half = px(3.6)
     return toPoints([tip, { x: back.x - dir.y * half, y: back.y + dir.x * half }, { x: back.x + dir.y * half, y: back.y - dir.x * half }])
   }
-  const barrier = (route: RouteGeometry) => {
-    const { point, direction } = pointAt(route.points, BARRIER_AT)
-    const half = px(8)
+  const tick = (points: readonly Point[], fraction: number) => {
+    const { point, direction } = pointAt(points, fraction)
+    const half = px(7)
     return toPoints([
       { x: point.x - direction.y * half, y: point.y + direction.x * half },
       { x: point.x + direction.y * half, y: point.y - direction.x * half },
     ])
   }
-  const tagStyle = (route: RouteGeometry) => {
-    const { point, direction } = pointAt(route.points, BARRIER_AT)
-    const p = toScreen(point)
-    const side = { x: -direction.y, y: direction.x }
-    const normal = side.y >= 0 ? side : { x: -side.x, y: -side.y }
-    return { left: `${p.x + normal.x * 26}px`, top: `${p.y + normal.y * 26}px` }
-  }
-  const chipFraction = (rv: RouteView) => {
-    if (rv.state === 'pending') {
-      const outcome = rv.attempt === undefined ? undefined : upcomingOutcome(rv.attempt.attempt_id)
-      return store.travel() * (outcome === 'blocked' ? CHIP_REST.blocked : CHIP_REST.other)
-    }
-    return rv.state === 'blocked' ? CHIP_REST.blocked : CHIP_REST.other
-  }
+  const width = (ink: Ink) => ({ 'stroke-width': `${px(WIDTH[ink])}` })
 
   return (
     <section class="map-card" aria-label="Network map">
-      <div class="map-wrap" classList={{ compact: compact() }} ref={(el) => (wrap = el)}>
+      <div class="map-wrap" classList={{ compact: compact() }} style={{ 'aspect-ratio': aspect() }} ref={(el) => (wrap = el)}>
         <Show when={scene()}>
           {(s) => (
             <>
@@ -272,11 +313,51 @@ export function MapStage(props: { store: SimulationStore }) {
                   onPointerCancel={endDrag}
                 />
                 <g class="grid" aria-hidden="true">
-                  <For each={s().grid}>{(line) => <polyline class="grid-line" points={toPoints(line)} />}</For>
+                  <For each={compact() ? s().coarseGrid : s().grid}>{(line) => <polyline class="grid-line" points={toPoints(line)} />}</For>
                 </g>
                 <g class="districts" aria-hidden="true">
                   <For each={s().areas}>
-                    {(area) => <polygon class="district" points={toPoints(area.polygon)} style={stroke(1, [5, 4])} />}
+                    {(area) => (
+                      <polygon
+                        class="district"
+                        points={toPoints(area.polygon)}
+                        style={{ 'stroke-width': `${px(1)}`, 'stroke-dasharray': `${px(4)} ${px(4)}` }}
+                      />
+                    )}
+                  </For>
+                </g>
+                <g class="routes" aria-hidden="true">
+                  <For each={layered()}>
+                    {(route) => {
+                      const rv = createMemo(() => routeView(route))
+                      const parts = createMemo(() => {
+                        const v = rv()
+                        if (v.state !== 'blocked') return { head: route.points, tail: null, stop: 0 }
+                        const stop = stopFraction(route, v)
+                        const [head, tail] = splitAt(route.points, stop)
+                        return { head, tail, stop }
+                      })
+                      const tipInk = (): Ink => (parts().tail === null ? inkOf(rv()) : 'idle')
+                      return (
+                        <g class={`route route-${rv().state}`} classList={{ current: rv().current }}>
+                          <Show
+                            when={parts().tail}
+                            fallback={
+                              <polyline class={`route-line ink-${inkOf(rv())}`} points={toPoints(trimEnd(route.points, px(5)))} style={width(inkOf(rv()))} />
+                            }
+                          >
+                            {(tail) => (
+                              <>
+                                <polyline class="route-line ink-idle" points={toPoints(trimEnd(tail(), px(5)))} style={width('idle')} />
+                                <polyline class={`route-line ink-${inkOf(rv())}`} points={toPoints(parts().head)} style={width(inkOf(rv()))} />
+                                <polyline class="tick" points={tick(route.points, parts().stop)} style={{ 'stroke-width': `${px(3)}` }} />
+                              </>
+                            )}
+                          </Show>
+                          <polygon class={`arrowhead ink-${tipInk()}`} points={arrowhead(route.points)} />
+                        </g>
+                      )
+                    }}
                   </For>
                 </g>
                 <g class="nodes">
@@ -311,56 +392,15 @@ export function MapStage(props: { store: SimulationStore }) {
                             <polygon class="screen" points={toPoints(shape.screen)} />
                           </Show>
                           <Show when={isSelected()}>
-                            <polygon class="ring ring-selected" points={toPoints(expand(shape.hull, px(6)))} style={stroke(2)} />
+                            <polygon class="ring ring-selected" points={toPoints(expand(shape.hull, px(6)))} style={{ 'stroke-width': `${px(2)}` }} />
                           </Show>
                           <Show when={isCurrent()}>
-                            <polygon class="ring ring-current" points={toPoints(expand(shape.hull, px(9)))} style={stroke(1.6, [5, 4])} />
+                            <polygon
+                              class="ring ring-current"
+                              points={toPoints(expand(shape.hull, px(8)))}
+                              style={{ 'stroke-width': `${px(1.6)}`, 'stroke-dasharray': `${px(4)} ${px(3)}` }}
+                            />
                           </Show>
-                        </g>
-                      )
-                    }}
-                  </For>
-                </g>
-                <g class="routes" aria-hidden="true">
-                  <For each={s().routes}>
-                    {(route) => {
-                      const rv = createMemo(() => routeView(route))
-                      return (
-                        <g class={`route route-${rv().state}`} classList={{ current: rv().current, flowing: rv().current && flowing() }}>
-                          <Switch>
-                            <Match when={rv().state === 'blocked'}>
-                              {(() => {
-                                const parts = () => splitAt(route.points, BARRIER_AT)
-                                return (
-                                  <>
-                                    <polyline
-                                      class="route-line before"
-                                      points={toPoints(parts()[0])}
-                                      style={rv().current ? stroke(2, [6, 4]) : stroke(1.25)}
-                                    />
-                                    <polyline class="route-line after" points={toPoints(parts()[1])} style={stroke(1.25, [3, 4])} />
-                                    <polyline class="barrier" points={barrier(route)} style={stroke(3.2)} />
-                                  </>
-                                )
-                              })()}
-                            </Match>
-                            <Match when={true}>
-                              <polyline
-                                class="route-line"
-                                points={toPoints(trimEnd(route.points, px(7)))}
-                                style={
-                                  rv().state === 'succeeded'
-                                    ? stroke(2.6)
-                                    : rv().state === 'pending'
-                                      ? stroke(2, [6, 4])
-                                      : rv().state === 'indeterminate'
-                                        ? stroke(2, [5, 4])
-                                        : stroke(1.25)
-                                }
-                              />
-                              <polygon class="arrowhead" points={arrowhead(route.points)} />
-                            </Match>
-                          </Switch>
                         </g>
                       )
                     }}
@@ -381,13 +421,11 @@ export function MapStage(props: { store: SimulationStore }) {
                     const shape = s().shapes.get(asset.id)!
                     const side = () => sideOf(asset.id)
                     const status = () => hostStatus(store.replay(), asset.id)
+                    const markers = () => [...(command() ? [asset.id] : []), ...s().markers.get(asset.id)!].join(' · ')
                     const position = () => {
                       const c = toScreen(shape.anchor)
-                      const b = bounds(shape.hull)
-                      const scale = transform().scale
-                      const halfW = ((b.maxX - b.minX) / 2) * scale + 16
-                      const halfH = ((b.maxY - b.minY) / 2) * scale + 12
-                      if (side() === 'right') return { left: `${c.x + halfW}px`, top: `${c.y}px` }
+                      const { halfW, halfH, lift } = labelBox(shape.anchor, bounds(shape.hull), transform().scale)
+                      if (side() === 'right') return { left: `${c.x + halfW}px`, top: `${c.y - lift}px` }
                       if (side() === 'left') return { left: `${c.x - halfW}px`, top: `${c.y}px` }
                       if (side() === 'top') return { left: `${c.x}px`, top: `${c.y - halfH}px` }
                       return { left: `${c.x}px`, top: `${c.y + halfH}px` }
@@ -395,11 +433,9 @@ export function MapStage(props: { store: SimulationStore }) {
                     return (
                       <div class={`node-label side-${side()}`} classList={{ selected: store.selectedHost() === asset.id }} style={position()}>
                         <span class="nl-name">{asset.label}</span>
-                        <span class="nl-sub">
-                          {command() ? `${asset.id} · ` : ''}
-                          {platformName(asset.platform)}
-                          {asset.id === s().seed ? ' · start' : ''}
-                        </span>
+                        <Show when={markers() !== ''}>
+                          <span class="nl-sub">{markers()}</span>
+                        </Show>
                         <Show when={status()}>
                           {(st) => <span class={`nl-status status-${st()}`}>{STATUS_WORDS[st()]}</span>}
                         </Show>
@@ -410,39 +446,21 @@ export function MapStage(props: { store: SimulationStore }) {
                 <For each={s().routes}>
                   {(route) => {
                     const rv = createMemo(() => routeView(route))
-                    const check = () => {
-                      const attempt = rv().attempt
-                      return attempt === undefined || attempt.status === 'pending' ? undefined : primaryCheck(attempt.checks)
-                    }
-                    const at = (fraction: number) => toScreen(pointAt(route.points, fraction).point)
+                    const at = (p: Point) => ({ left: `${toScreen(p).x}px`, top: `${toScreen(p).y}px` })
                     return (
                       <>
+                        <Show when={rv().state === 'indeterminate'}>
+                          <span class="route-badge" style={at(badgeAt(route))}>
+                            ?
+                          </span>
+                        </Show>
                         <Show when={rv().current && rv().capability}>
                           {(capability) => (
-                            <span
-                              class="route-chip"
-                              style={{ left: `${at(chipFraction(rv())).x}px`, top: `${at(chipFraction(rv())).y}px` }}
-                            >
+                            <span class="route-chip" style={at(pointAt(route.points, chipFraction(route, rv())).point)}>
                               {capabilityChip(capability())}
                               {command() ? ` · ${route.linkId}` : ''}
                             </span>
                           )}
-                        </Show>
-                        <Show when={rv().state === 'blocked' && check()}>
-                          {(c) => (
-                            <span
-                              class="route-tag tag-blocked"
-                              classList={{ past: !rv().current }}
-                              style={tagStyle(route)}
-                            >
-                              ✕ {command() ? c().code : blockTag(c())}
-                            </span>
-                          )}
-                        </Show>
-                        <Show when={rv().state === 'indeterminate'}>
-                          <span class="route-tag tag-unknown" style={{ left: `${at(0.66).x + 12}px`, top: `${at(0.66).y - 16}px` }}>
-                            ?{command() && check() ? ` ${check()!.code}` : ''}
-                          </span>
                         </Show>
                       </>
                     )
@@ -467,12 +485,32 @@ export function MapStage(props: { store: SimulationStore }) {
       </div>
 
       <footer class="map-legend" aria-label="Legend">
-        <span class="legend-item"><span class="lg-swatch lg-compromised" />compromised</span>
-        <span class="legend-item"><span class="lg-line lg-spread" />spread</span>
-        <span class="legend-item"><span class="lg-line lg-current" />current attempt</span>
-        <span class="legend-item"><span class="lg-bar" />blocked</span>
-        <span class="legend-item"><span class="lg-line lg-idle" />not yet tried</span>
-        <span class="legend-hint">drag to pan · Enter on a host to inspect</span>
+        <span class="legend-item">
+          <span class="lg-swatch" />
+          compromised
+        </span>
+        <span class="legend-item">
+          <span class="lg-line lg-spread" />
+          spread
+        </span>
+        <span class="legend-item">
+          <span class="lg-line lg-current" />
+          current step
+        </span>
+        <span class="legend-item">
+          <span class="lg-line lg-tried">
+            <span class="lg-tick" />
+          </span>
+          tried and stopped
+        </span>
+        <span class="legend-item">
+          <span class="lg-badge">?</span>
+          outcome unknown
+        </span>
+        <span class="legend-item">
+          <span class="lg-line lg-idle" />
+          not tried
+        </span>
       </footer>
     </section>
   )

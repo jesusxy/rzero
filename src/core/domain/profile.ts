@@ -67,6 +67,8 @@ export type MalwareProfile = {
   readonly id: string
   readonly version: string
   readonly name: string
+  /** Display only: one or two plain sentences for learners. Never evaluated; not in the input digest. */
+  readonly summary?: string
   readonly scope: ProfileScope
   /** Lowercase SHA-256 of the sample. Required for, and only allowed on, `sample` scope. */
   readonly sha256?: string

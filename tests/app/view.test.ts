@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { groupSteps, importScenario, runScenario, seekReplay } from '../../src/core'
 import { backCursor, hostStatus, isStepComplete, latestAttemptByLink, metrics, nextCursor, stepIndexAt } from '../../src/app/view'
-import { exitPoint, labelSide, nodeShape, pointAt, routeGeometry, splitAt, trimEnd, type Point } from '../../src/app/scene'
+import { fractionAt, insideHull, labelSide, nodeShape, pointAt, routeGeometry, splitAt, toScene, trimEnd, type Point } from '../../src/app/scene'
 import { computeLayout } from '../../src/app/layout'
 import { expectCompiled, fixtureText } from '../core/helpers'
 
@@ -46,20 +46,10 @@ describe('host status, routes and metrics at a step', () => {
 })
 
 describe('map geometry', () => {
-  const layout = computeLayout(compiled.effective.network.assets)
-  const shapes = new Map(compiled.effective.network.assets.map((a) => [a.id, nodeShape(a, layout.get(a.id)!)]))
-  const inside = (p: Point, hull: readonly Point[]) => {
-    let sign = 0
-    for (let i = 0; i < hull.length; i += 1) {
-      const a = hull[i]!
-      const b = hull[(i + 1) % hull.length]!
-      const cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
-      if (Math.abs(cross) < 1e-6) continue
-      if (sign === 0) sign = Math.sign(cross)
-      else if (Math.sign(cross) !== sign) return false
-    }
-    return true
-  }
+  const layout = computeLayout(compiled.effective.network, compiled.effective.initial_asset_id)
+  const shapes = new Map(compiled.effective.network.assets.map((a) => [a.id, nodeShape(a, toScene(layout.cells.get(a.id)!))]))
+  const routes = layout.routes.map((r) => routeGeometry(r, shapes)!)
+  const route = (id: string) => routes.find((r) => r.linkId === id)!
 
   test('workstations are low slabs with a monitor; servers are tall boxes with rack lines', () => {
     expect(shapes.get('A')!.silhouette).toBe('workstation')
@@ -68,14 +58,18 @@ describe('map geometry', () => {
     expect(shapes.get('D')!.racks.length).toBeGreaterThan(0)
   })
 
-  test('routes are trimmed to the silhouettes of both nodes', () => {
-    const link = compiled.effective.network.links.find((l) => l.id === 'ab')!
-    const route = routeGeometry(link, shapes)!
-    const [start, end] = [route.points[0]!, route.points.at(-1)!]
-    expect(inside(start, shapes.get('A')!.hull)).toBe(true) // on the boundary
-    expect(inside(end, shapes.get('B')!.hull)).toBe(true)
-    expect(inside(pointAt(route.points, 0.5).point, shapes.get('A')!.hull)).toBe(false)
-    expect(exitPoint(shapes.get('A')!.anchor, shapes.get('B')!.anchor, shapes.get('A')!.hull)).toEqual(start)
+  test('routes are trimmed to the silhouettes of both nodes and keep their grid corners', () => {
+    const ab = route('ab')
+    const [start, end] = [ab.points[0]!, ab.points.at(-1)!]
+    expect(insideHull(start, shapes.get('A')!.hull)).toBe(true) // on the boundary
+    expect(insideHull(end, shapes.get('B')!.hull)).toBe(true)
+    expect(insideHull(pointAt(ab.points, 0.5).point, shapes.get('A')!.hull)).toBe(false)
+    expect(ab.corners.length).toBe(2)
+    expect(ab.points.length).toBe(4)
+    const [first, last] = ab.corners.map((corner) => fractionAt(ab.points, corner))
+    expect(0 < first! && first! < last! && last! < 1).toBe(true)
+    expect(route('bd').corners).toEqual([])
+    expect(route('bd').entry).toBeNull()
   })
 
   test('path helpers split and trim by length', () => {
@@ -83,14 +77,10 @@ describe('map geometry', () => {
     expect(splitAt(line, 0.7)[0].at(-1)).toEqual({ x: 7, y: 0 })
     expect(trimEnd(line, 2).at(-1)).toEqual({ x: 8, y: 0 })
     expect(pointAt(line, 0.25).point).toEqual({ x: 2.5, y: 0 })
+    expect(fractionAt([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }], { x: 10, y: 5 })).toBe(0.75)
   })
 
-  test('labels go on the side away from routes', () => {
-    const routes = compiled.effective.network.links.map((l) => routeGeometry(l, shapes)!)
-    const side = (id: string) => labelSide(id, shapes.get(id)!.anchor, routes)
-    expect(side('A')).toBe('top') // routes leave A down-left and down-right
-    expect(side('B')).toBe('left') // routes reach B from the upper right and leave down-right
-    expect(side('C')).toBe('right')
-    expect(labelSide('A', shapes.get('A')!.anchor, routes, ['bottom', 'top'])).toBe('top')
+  test('compact labels go above or below, away from routes', () => {
+    expect(labelSide('A', shapes.get('A')!.anchor, routes, ['bottom', 'top'])).toBe('top') // A's trunk leaves down-right
   })
 })

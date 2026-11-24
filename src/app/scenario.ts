@@ -1,5 +1,7 @@
 import baselineText from '../../fixtures/scenarios/001-five-node-baseline.json?raw'
 import segmentedText from '../../fixtures/scenarios/002-counterfactual-segmentation.json?raw'
+import wannacryText from '../../fixtures/scenarios/wannacry-small-office.json?raw'
+import wannacrySegmentedText from '../../fixtures/scenarios/wannacry-small-office-segmented.json?raw'
 
 export type BuiltinScenario = {
   readonly key: string
@@ -23,6 +25,20 @@ export const BUILTIN_SCENARIOS: readonly BuiltinScenario[] = [
     text: segmentedText,
     title: 'Five-node lab, segmented',
     description: 'Synthetic demo: a workstation/server boundary denies SMB',
+  },
+  {
+    key: 'wannacry',
+    file: 'wannacry-small-office.json',
+    text: wannacryText,
+    title: 'WannaCry in a small office',
+    description: 'Fictional office network, reviewed WannaCry (May 2017) profile',
+  },
+  {
+    key: 'wannacry-segmented',
+    file: 'wannacry-small-office-segmented.json',
+    text: wannacrySegmentedText,
+    title: 'WannaCry in a small office, servers segmented',
+    description: 'Same office; SMB from the office to the servers is denied',
   },
 ]
 

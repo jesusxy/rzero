@@ -12,6 +12,12 @@
     "id": { "$ref": "common.schema.json#/$defs/id" },
     "version": { "type": "string", "minLength": 1, "maxLength": 64 },
     "name": { "$ref": "common.schema.json#/$defs/label" },
+    "summary": {
+      "description": "Display only: one or two plain sentences for learners. Never evaluated and excluded from the input digest.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 400
+    },
     "scope": { "enum": ["synthetic", "family", "sample"] },
     "sha256": {
       "description": "Lowercase SHA-256 of the sample binary",

@@ -1,5 +1,5 @@
-import type { Asset, Link, Segment } from '../core'
-import type { GridPosition } from './layout'
+import type { Asset } from '../core'
+import { CELL, type DistrictBox, type GridPosition, type RoutePath } from './layout'
 
 export type Point = { readonly x: number; readonly y: number }
 
@@ -30,11 +30,21 @@ export type RouteGeometry = {
   readonly source: string
   readonly target: string
   readonly points: readonly Point[]
+  readonly corners: readonly Point[]
+  readonly entry: Point | null
 }
 
 export type LabelSide = 'right' | 'left' | 'top' | 'bottom'
 
 const PROJECTION = { originX: 50, originY: 8, tileX: 1.55, tileY: 1.02 }
+
+export function toScene(cell: GridPosition): GridPosition {
+  return { x: cell.x * CELL, y: cell.y * CELL }
+}
+
+export function projectCell(cell: GridPosition): Point {
+  return project(toScene(cell))
+}
 
 export function project(p: GridPosition): Point {
   return {
@@ -122,29 +132,15 @@ export function bounds(points: readonly Point[]) {
   return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
 }
 
-export function districts(
-  assets: readonly Asset[],
-  layout: ReadonlyMap<string, GridPosition>,
-  segments: readonly Segment[],
-  margin = 3.6,
-): District[] {
-  return segments.flatMap((segment) => {
-    const members = assets.flatMap((asset) => {
-      const p = asset.segment_id === segment.id ? layout.get(asset.id) : undefined
-      return p === undefined ? [] : [p]
-    })
-    if (members.length === 0) return []
-    const minX = Math.min(...members.map((p) => p.x)) - margin
-    const maxX = Math.max(...members.map((p) => p.x)) + margin
-    const minY = Math.min(...members.map((p) => p.y)) - margin
-    const maxY = Math.max(...members.map((p) => p.y)) + margin
+export function districts(boxes: readonly DistrictBox[]): District[] {
+  return boxes.map((box) => {
     const polygon = [
-      project({ x: minX, y: minY }),
-      project({ x: maxX, y: minY }),
-      project({ x: maxX, y: maxY }),
-      project({ x: minX, y: maxY }),
+      projectCell({ x: box.minX, y: box.minY }),
+      projectCell({ x: box.maxX, y: box.minY }),
+      projectCell({ x: box.maxX, y: box.maxY }),
+      projectCell({ x: box.minX, y: box.maxY }),
     ]
-    return [{ id: segment.id, label: segment.label, polygon, labelAt: lerp(polygon[2]!, centroid(polygon), 0.1) }]
+    return { id: box.id, label: box.label, polygon, labelAt: { x: polygon[0]!.x, y: polygon[0]!.y - 1.2 } }
   })
 }
 
@@ -167,25 +163,90 @@ export function exitPoint(from: Point, to: Point, hull: readonly Point[]): Point
   return best === null ? from : lerp(from, to, best)
 }
 
-export function routeGeometry(link: Link, shapes: ReadonlyMap<string, NodeShape>): RouteGeometry | null {
-  const source = shapes.get(link.source_id)
-  const target = shapes.get(link.target_id)
-  if (!source || !target) return null
-  const start = exitPoint(source.anchor, target.anchor, source.hull)
-  const end = exitPoint(target.anchor, source.anchor, target.hull)
-  return { linkId: link.id, source: link.source_id, target: link.target_id, points: [start, end] }
+export function insideHull(p: Point, hull: readonly Point[]): boolean {
+  let sign = 0
+  for (let i = 0; i < hull.length; i += 1) {
+    const a = hull[i]!
+    const b = hull[(i + 1) % hull.length]!
+    const cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
+    if (Math.abs(cross) < 1e-9) continue
+    if (sign === 0) sign = Math.sign(cross)
+    else if (Math.sign(cross) !== sign) return false
+  }
+  return true
 }
 
-export function gridLines(layout: ReadonlyMap<string, GridPosition>, margin = 10, step = 3): Point[][] {
-  const positions = [...layout.values()]
-  if (positions.length === 0) return []
-  const minX = Math.min(...positions.map((p) => p.x)) - margin
-  const maxX = Math.max(...positions.map((p) => p.x)) + margin
-  const minY = Math.min(...positions.map((p) => p.y)) - margin
-  const maxY = Math.max(...positions.map((p) => p.y)) + margin
+function trimStart(points: readonly Point[], hull: readonly Point[]): Point[] {
+  for (let i = 1; i < points.length; i += 1) {
+    if (!insideHull(points[i]!, hull)) return [exitPoint(points[i - 1]!, points[i]!, hull), ...points.slice(i)]
+  }
+  return [...points]
+}
+
+function enteringAt(points: readonly GridPosition[], box: DistrictBox): GridPosition | null {
+  for (let i = 1; i < points.length; i += 1) {
+    const a = points[i - 1]!
+    const b = points[i]!
+    if (a.y === b.y && box.minY < a.y && a.y < box.maxY) {
+      if (a.x < box.minX && b.x >= box.minX) return { x: box.minX, y: a.y }
+      if (a.x > box.maxX && b.x <= box.maxX) return { x: box.maxX, y: a.y }
+    }
+    if (a.x === b.x && box.minX < a.x && a.x < box.maxX) {
+      if (a.y < box.minY && b.y >= box.minY) return { x: a.x, y: box.minY }
+      if (a.y > box.maxY && b.y <= box.maxY) return { x: a.x, y: box.maxY }
+    }
+  }
+  return null
+}
+
+export function routeGeometry(
+  route: RoutePath,
+  shapes: ReadonlyMap<string, NodeShape>,
+  targetDistrict?: DistrictBox,
+): RouteGeometry | null {
+  const source = shapes.get(route.source)
+  const target = shapes.get(route.target)
+  if (!source || !target || route.points.length < 2) return null
+  const projected = route.points.map(projectCell)
+  const trimmed = trimStart(trimStart(projected, source.hull).reverse(), target.hull).reverse()
+  const crossing = targetDistrict === undefined ? null : enteringAt(route.points, targetDistrict)
+  return {
+    linkId: route.linkId,
+    source: route.source,
+    target: route.target,
+    points: trimmed,
+    corners: projected.slice(1, -1),
+    entry: crossing === null ? null : projectCell(crossing),
+  }
+}
+
+export function fractionAt(points: readonly Point[], p: Point): number {
+  const total = pathLength(points)
+  if (total === 0) return 0
+  let walked = 0
+  let best = { gap: Infinity, at: 0 }
+  for (let i = 1; i < points.length; i += 1) {
+    const a = points[i - 1]!
+    const b = points[i]!
+    const length = distance(a, b)
+    const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / (length * length)))
+    const gap = distance(lerp(a, b, t), p)
+    if (gap < best.gap - 1e-9) best = { gap, at: (walked + t * length) / total }
+    walked += length
+  }
+  return best.at
+}
+
+export function gridLines(boxes: readonly DistrictBox[], step = 1, margin = 14): Point[][] {
+  if (boxes.length === 0) return []
+  const minX = Math.min(...boxes.map((b) => b.minX)) - margin
+  const maxX = Math.max(...boxes.map((b) => b.maxX)) + margin
+  const minY = Math.min(...boxes.map((b) => b.minY)) - margin
+  const maxY = Math.max(...boxes.map((b) => b.maxY)) + margin
   const lines: Point[][] = []
-  for (let x = Math.ceil(minX / step) * step; x <= maxX; x += step) lines.push([project({ x, y: minY }), project({ x, y: maxY })])
-  for (let y = Math.ceil(minY / step) * step; y <= maxY; y += step) lines.push([project({ x: minX, y }), project({ x: maxX, y })])
+  const first = (value: number) => Math.ceil(value / step) * step
+  for (let x = first(minX); x <= maxX; x += step) lines.push([projectCell({ x, y: minY }), projectCell({ x, y: maxY })])
+  for (let y = first(minY); y <= maxY; y += step) lines.push([projectCell({ x: minX, y }), projectCell({ x: maxX, y })])
   return lines
 }
 
@@ -239,8 +300,13 @@ export function labelSide(
   anchor: Point,
   routes: readonly RouteGeometry[],
   allowed: readonly LabelSide[] = ALL_SIDES,
+  obstacles: readonly Point[] = [],
+  reach = 18,
 ): LabelSide {
   const angles: number[] = []
+  for (const p of obstacles) {
+    if (distance(anchor, p) <= reach) angles.push(Math.atan2(p.y - anchor.y, p.x - anchor.x))
+  }
   for (const route of routes) {
     const pts = route.points
     if (pts.length < 2) continue

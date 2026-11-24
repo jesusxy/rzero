@@ -20,15 +20,22 @@ import {
   type RouteGeometry,
 } from '../app/scene'
 import { hostStatus, latestAttemptByLink, routeState, type HostStatus, type RouteState } from '../app/view'
-import { FitIcon, MinusIcon, PlusIcon } from './icons'
+import { FitIcon, LockIcon, MinusIcon, PlusIcon, ShieldIcon } from './icons'
 
 type View = { x: number; y: number; w: number; h: number }
 
-const STATUS_WORDS: Record<Exclude<HostStatus, null>, string> = {
+const STATUS_WORDS: Record<Exclude<HostStatus, null> | 'saved', string> = {
   compromised: 'Compromised',
   blocked: 'Blocked',
   unknown: 'Unknown',
+  saved: 'Saved',
 }
+
+const DEFENSE_LEGEND = {
+  segmentation: 'zone protected by your defense',
+  patch: 'host patched by your defense',
+  link: 'link blocked by your defense',
+} as const
 
 const STRAIGHT_STOP = 0.6
 const WIDTH = { idle: 1.25, tried: 1.5, spread: 2.6, current: 2.2 } as const
@@ -223,6 +230,9 @@ export function MapStage(props: { store: SimulationStore }) {
     ;(event.currentTarget as Element).releasePointerCapture?.(event.pointerId)
   }
 
+  const marks = () => store.comparison()?.marks
+  const saved = createMemo(() => new Set(store.atResults() ? (store.comparison()?.changes.saved ?? []) : []))
+  const shownStatus = (id: string): keyof typeof STATUS_WORDS | null => (saved().has(id) ? 'saved' : hostStatus(store.replay(), id))
   const ledger = createMemo(() => latestAttemptByLink(store.replay()))
   const currentStep = createMemo(() => store.steps()[store.stepIndex()] ?? null)
   const currentAttempt = createMemo<AttemptView | null>(() => {
@@ -317,13 +327,21 @@ export function MapStage(props: { store: SimulationStore }) {
                 </g>
                 <g class="districts" aria-hidden="true">
                   <For each={s().areas}>
-                    {(area) => (
-                      <polygon
-                        class="district"
-                        points={toPoints(area.polygon)}
-                        style={{ 'stroke-width': `${px(1)}`, 'stroke-dasharray': `${px(4)} ${px(4)}` }}
-                      />
-                    )}
+                    {(area) => {
+                      const guarded = () => marks()?.protectedSegments.has(area.id) === true
+                      return (
+                        <polygon
+                          class="district"
+                          classList={{ protected: guarded() }}
+                          points={toPoints(area.polygon)}
+                          style={
+                            guarded()
+                              ? { 'stroke-width': `${px(2)}` }
+                              : { 'stroke-width': `${px(1)}`, 'stroke-dasharray': `${px(4)} ${px(4)}` }
+                          }
+                        />
+                      )
+                    }}
                   </For>
                 </g>
                 <g class="routes" aria-hidden="true">
@@ -364,13 +382,18 @@ export function MapStage(props: { store: SimulationStore }) {
                   <For each={s().assets}>
                     {(asset) => {
                       const shape = s().shapes.get(asset.id)!
-                      const status = () => hostStatus(store.replay(), asset.id)
+                      const status = () => shownStatus(asset.id)
                       const isCurrent = () => currentTarget() === asset.id
                       const isSelected = () => store.selectedHost() === asset.id
                       return (
                         <g
                           class={`node node-${shape.silhouette}`}
-                          classList={{ compromised: status() === 'compromised', current: isCurrent(), selected: isSelected() }}
+                          classList={{
+                            compromised: status() === 'compromised',
+                            saved: status() === 'saved',
+                            current: isCurrent(),
+                            selected: isSelected(),
+                          }}
                           role="button"
                           tabindex="0"
                           aria-pressed={isSelected()}
@@ -411,16 +434,50 @@ export function MapStage(props: { store: SimulationStore }) {
               <div class="map-overlay" aria-hidden="true">
                 <For each={s().areas}>
                   {(area) => (
-                    <span class="district-label" style={{ left: `${toScreen(area.labelAt).x}px`, top: `${toScreen(area.labelAt).y}px` }}>
+                    <span
+                      class="district-label"
+                      classList={{ protected: marks()?.protectedSegments.has(area.id) === true }}
+                      style={{ left: `${toScreen(area.labelAt).x}px`, top: `${toScreen(area.labelAt).y}px` }}
+                    >
                       {area.label}
+                      <Show when={marks()?.protectedSegments.has(area.id)}>
+                        <LockIcon />
+                      </Show>
                     </span>
+                  )}
+                </For>
+                <For each={s().assets}>
+                  {(asset) => (
+                    <Show when={marks()?.patchedHosts.has(asset.id)}>
+                      {(() => {
+                        const hull = bounds(s().shapes.get(asset.id)!.hull)
+                        const at = () => toScreen({ x: hull.minX, y: hull.minY })
+                        return (
+                          <span class="map-badge badge-shield" style={{ left: `${at().x}px`, top: `${at().y}px` }}>
+                            <ShieldIcon />
+                          </span>
+                        )
+                      })()}
+                    </Show>
+                  )}
+                </For>
+                <For each={s().routes}>
+                  {(route) => (
+                    <Show when={marks()?.lockedLinks.has(route.linkId)}>
+                      <span
+                        class="map-badge badge-lock"
+                        style={{ left: `${toScreen(pointAt(route.points, 0.5).point).x}px`, top: `${toScreen(pointAt(route.points, 0.5).point).y}px` }}
+                      >
+                        <LockIcon />
+                      </span>
+                    </Show>
                   )}
                 </For>
                 <For each={s().assets}>
                   {(asset) => {
                     const shape = s().shapes.get(asset.id)!
                     const side = () => sideOf(asset.id)
-                    const status = () => hostStatus(store.replay(), asset.id)
+                    const status = () => shownStatus(asset.id)
                     const markers = () => [...(command() ? [asset.id] : []), ...s().markers.get(asset.id)!].join(' · ')
                     const position = () => {
                       const c = toScreen(shape.anchor)
@@ -511,6 +568,27 @@ export function MapStage(props: { store: SimulationStore }) {
           <span class="lg-line lg-idle" />
           not tried
         </span>
+        <Show when={store.defense()}>
+          {(applied) => (
+            <>
+              <span class="legend-item">
+                <span class={`lg-defense lg-${applied().option.kind}`}>
+                  <Show when={applied().option.kind === 'patch'}>
+                    <ShieldIcon size={12} />
+                  </Show>
+                  <Show when={applied().option.kind === 'link'}>
+                    <LockIcon size={11} />
+                  </Show>
+                </span>
+                {DEFENSE_LEGEND[applied().option.kind]}
+              </span>
+              <span class="legend-item">
+                <span class="lg-swatch lg-saved" />
+                saved by your defense
+              </span>
+            </>
+          )}
+        </Show>
       </footer>
     </section>
   )

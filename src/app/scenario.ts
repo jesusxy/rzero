@@ -1,7 +1,8 @@
 import baselineText from '../../fixtures/scenarios/001-five-node-baseline.json?raw'
 import segmentedText from '../../fixtures/scenarios/002-counterfactual-segmentation.json?raw'
 import wannacryText from '../../fixtures/scenarios/wannacry-small-office.json?raw'
-import wannacrySegmentedText from '../../fixtures/scenarios/wannacry-small-office-segmented.json?raw'
+import wannacryDefenses from '../../fixtures/scenarios/wannacry-small-office.defenses.json?raw'
+import type { CompiledScenario } from '../core'
 
 export type BuiltinScenario = {
   readonly key: string
@@ -9,9 +10,18 @@ export type BuiltinScenario = {
   readonly text: string
   readonly title: string
   readonly description: string
+  readonly defenses?: string
 }
 
 export const BUILTIN_SCENARIOS: readonly BuiltinScenario[] = [
+  {
+    key: 'wannacry',
+    file: 'wannacry-small-office.json',
+    text: wannacryText,
+    title: 'WannaCry in a small office',
+    description: 'Reviewed WannaCry (May 2017) profile · fictional office network',
+    defenses: wannacryDefenses,
+  },
   {
     key: '001',
     file: '001-five-node-baseline.json',
@@ -26,23 +36,19 @@ export const BUILTIN_SCENARIOS: readonly BuiltinScenario[] = [
     title: 'Five-node lab, segmented',
     description: 'Synthetic demo: a workstation/server boundary denies SMB',
   },
-  {
-    key: 'wannacry',
-    file: 'wannacry-small-office.json',
-    text: wannacryText,
-    title: 'WannaCry in a small office',
-    description: 'Fictional office network, reviewed WannaCry (May 2017) profile',
-  },
-  {
-    key: 'wannacry-segmented',
-    file: 'wannacry-small-office-segmented.json',
-    text: wannacrySegmentedText,
-    title: 'WannaCry in a small office, servers segmented',
-    description: 'Same office; SMB from the office to the servers is denied',
-  },
 ]
+
+export const DEFAULT_SCENARIO = BUILTIN_SCENARIOS[0]!
 
 export function selectBuiltinScenario(search: string): BuiltinScenario {
   const key = new URLSearchParams(search).get('scenario')
-  return BUILTIN_SCENARIOS.find((scenario) => scenario.key === key) ?? BUILTIN_SCENARIOS[0]!
+  return BUILTIN_SCENARIOS.find((scenario) => scenario.key === key) ?? DEFAULT_SCENARIO
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+export function scenarioFacts(compiled: CompiledScenario): string {
+  const network = compiled.effective.network
+  const kind = compiled.effective.profile.scope === 'synthetic' ? 'Synthetic demo' : 'Real malware'
+  return [kind, plural(network.assets.length, 'host'), plural(network.segments.length, 'segment')].join(' · ')
 }

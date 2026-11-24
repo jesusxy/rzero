@@ -18,6 +18,10 @@
   --unknown-fill: #f3edfb;
   --route-idle: #cdd2d9;
   --route-tried: #8f98a4;
+  --saved: #1f7a4d;
+  --saved-fill: #e7f5ed;
+  --saved-border: #b5dcc5;
+  --protected-fill: #fffbf3;
   --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
   --sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 

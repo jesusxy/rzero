@@ -13,9 +13,21 @@ import {
   type Step,
 } from '../core'
 import { narrate, type Narration } from './narration'
-import { selectBuiltinScenario } from './scenario'
+import { BUILTIN_SCENARIOS, DEFAULT_SCENARIO, scenarioFacts, selectBuiltinScenario } from './scenario'
 import { computeLayout, EMPTY_LAYOUT, type MapLayout } from './layout'
 import { backCursor, isStepComplete, nextCursor, stepIndexAt } from './view'
+import {
+  bestAlternative,
+  defenseChanges,
+  defenseMarks,
+  parseDefenses,
+  runDefense,
+  type Alternative,
+  type DefenseChanges,
+  type DefenseMarks,
+  type DefenseOption,
+  type DefenseRun,
+} from './defenses'
 
 export type Phase = 'prepared' | 'ready' | 'error'
 export type Mode = 'story' | 'command'
@@ -35,6 +47,47 @@ export const PACE: { readonly dwell: number; readonly travel: number; readonly a
   },
 }
 
+export type ScenarioSource = {
+  readonly key: string | null
+  readonly file: string
+  readonly title: string
+  readonly description: string
+  readonly compiled: CompiledScenario | null
+  readonly diagnostics: readonly Diagnostic[]
+  readonly defenses: readonly DefenseOption[]
+}
+
+export type DefenseComparison = {
+  readonly result: DefenseRun
+  readonly baseRun: RunResult
+  readonly changes: DefenseChanges
+  readonly marks: DefenseMarks
+  readonly alternative: Alternative | null
+}
+
+type SourceInput = {
+  readonly key: string | null
+  readonly file: string
+  readonly text: string
+  readonly title?: string
+  readonly description?: string
+  readonly defenses?: string
+}
+
+export function loadSource(input: SourceInput): ScenarioSource {
+  const prepared = importScenario(input.text, { fileName: input.file })
+  const compiled = prepared.ok ? prepared.value : null
+  return {
+    key: input.key,
+    file: input.file,
+    title: input.title ?? compiled?.name ?? input.file,
+    description: input.description ?? (compiled === null ? input.file : `${input.file} · ${scenarioFacts(compiled)}`),
+    compiled,
+    diagnostics: prepared.diagnostics,
+    defenses: compiled === null || input.defenses === undefined ? [] : parseDefenses(input.defenses).options,
+  }
+}
+
 function reducedMotionSignal() {
   const query = typeof window === 'undefined' ? null : window.matchMedia('(prefers-reduced-motion: reduce)')
   const [reduced, setReduced] = createSignal(query?.matches ?? false)
@@ -43,18 +96,20 @@ function reducedMotionSignal() {
 }
 
 export function createSimulationStore(search = typeof window === 'undefined' ? '' : window.location.search) {
-  const scenario = selectBuiltinScenario(search)
-  const prepared = importScenario(scenario.text, { fileName: scenario.file })
-  const preparedCompiled = prepared.ok ? prepared.value : null
-
-  const [phase, setPhase] = createSignal<Phase>(prepared.ok ? 'prepared' : 'error')
-  const [diagnostics] = createSignal<readonly Diagnostic[]>(prepared.diagnostics)
-  const [compiled] = createSignal<CompiledScenario | null>(preparedCompiled)
-  const [layout] = createSignal<MapLayout>(
-    preparedCompiled === null
-      ? EMPTY_LAYOUT
-      : computeLayout(preparedCompiled.effective.network, preparedCompiled.effective.initial_asset_id),
-  )
+  const initial = loadSource(selectBuiltinScenario(search))
+  const [source, setSource] = createSignal<ScenarioSource>(initial)
+  const [phase, setPhase] = createSignal<Phase>(initial.compiled === null ? 'error' : 'prepared')
+  const diagnostics = () => source().diagnostics
+  const baseCompiled = () => source().compiled
+  const [baseRun, setBaseRun] = createSignal<RunResult | null>(null)
+  const [defense, setDefense] = createSignal<DefenseRun | null>(null)
+  const [defenseChoice, setDefenseChoice] = createSignal<string | null>(null)
+  const [defenseError, setDefenseError] = createSignal<string | null>(null)
+  const compiled = createMemo<CompiledScenario | null>(() => defense()?.compiled ?? baseCompiled())
+  const layout = createMemo<MapLayout>(() => {
+    const base = baseCompiled()
+    return base === null ? EMPTY_LAYOUT : computeLayout(base.effective.network, base.effective.initial_asset_id)
+  })
   const [run, setRun] = createSignal<RunResult | null>(null)
   const [cursor, setCursor] = createSignal(0)
   const [playing, setPlaying] = createSignal(false)
@@ -64,6 +119,24 @@ export function createSimulationStore(search = typeof window === 'undefined' ? '
   const [selectedHost, setSelectedHost] = createSignal<string | null>(null)
   const reducedMotion = reducedMotionSignal()
 
+  const defenseLabels = createMemo(() => {
+    const applied = defense()
+    return applied === null ? undefined : new Map(applied.option.interventions.map((i) => [i.id, applied.option.label]))
+  })
+  const comparison = createMemo<DefenseComparison | null>(() => {
+    const result = defense()
+    const original = baseRun()
+    const base = baseCompiled()
+    if (result === null || original === null || base === null) return null
+    return {
+      result,
+      baseRun: original,
+      changes: defenseChanges(original, result),
+      marks: defenseMarks(result),
+      alternative: bestAlternative(base, original, source().defenses, result.option.id),
+    }
+  })
+
   const steps = createMemo<readonly Step[]>(() => {
     const current = run()
     return current === null ? [] : groupSteps(current.events)
@@ -72,7 +145,8 @@ export function createSimulationStore(search = typeof window === 'undefined' ? '
     const current = run()
     const scenarioValue = compiled()
     if (current === null || scenarioValue === null) return []
-    return steps().map((step) => narrate(step, current.events, scenarioValue))
+    const labels = defenseLabels()
+    return steps().map((step) => narrate(step, current.events, scenarioValue, labels === undefined ? {} : { defenseLabels: labels }))
   })
   const replay = createMemo<ReplayState>(() => {
     const current = run()
@@ -82,6 +156,7 @@ export function createSimulationStore(search = typeof window === 'undefined' ? '
   const stepComplete = createMemo(() => isStepComplete(steps(), cursor()))
   const totalEvents = createMemo(() => run()?.events.length ?? 0)
   const atEnd = createMemo(() => run() !== null && cursor() >= totalEvents())
+  const atResults = createMemo(() => defense() !== null && steps()[stepIndex()]?.kind === 'summary')
 
   let timer: ReturnType<typeof setTimeout> | undefined
   let frame: number | undefined
@@ -147,17 +222,46 @@ export function createSimulationStore(search = typeof window === 'undefined' ? '
     frame = requestAnimationFrame(tick)
   }
 
-  function start(): void {
-    const scenarioValue = compiled()
-    if (scenarioValue === null) return
+  function ensureBaseRun(): RunResult | null {
+    const base = baseCompiled()
+    if (base === null) return null
+    const existing = baseRun()
+    if (existing !== null) return existing
+    const fresh = runScenario(base)
+    setBaseRun(fresh)
+    return fresh
+  }
+
+  function begin(current: RunResult): void {
     clearClock()
-    setRun(runScenario(scenarioValue))
+    setRun(current)
     setCursor(0)
     setTravel(1)
     setSelectedHost(null)
     setPhase('ready')
     setPlaying(true)
     schedule()
+  }
+
+  function start(): void {
+    const applied = defense()
+    const current = applied === null ? ensureBaseRun() : applied.run
+    if (current !== null) begin(current)
+  }
+
+  function load(next: ScenarioSource): void {
+    clearClock()
+    setPlaying(false)
+    setSource(next)
+    setBaseRun(null)
+    setDefense(null)
+    setDefenseChoice(null)
+    setDefenseError(null)
+    setRun(null)
+    setCursor(0)
+    setTravel(1)
+    setSelectedHost(null)
+    setPhase(next.compiled === null ? 'error' : 'prepared')
   }
 
   function play(): void {
@@ -184,7 +288,8 @@ export function createSimulationStore(search = typeof window === 'undefined' ? '
   }
 
   return {
-    scenario,
+    scenario: source,
+    scenarios: BUILTIN_SCENARIOS,
     phase,
     diagnostics,
     compiled,
@@ -198,6 +303,7 @@ export function createSimulationStore(search = typeof window === 'undefined' ? '
     stepComplete,
     totalEvents,
     atEnd,
+    atResults,
     playing,
     travel,
     reducedMotion,
@@ -206,6 +312,46 @@ export function createSimulationStore(search = typeof window === 'undefined' ? '
     setLogOpen,
     selectedHost,
     hasRun: () => run() !== null,
+    defense,
+    defenseChoice,
+    defenseError,
+    comparison,
+    selectScenario(key: string): void {
+      const entry = BUILTIN_SCENARIOS.find((scenario) => scenario.key === key)
+      if (entry === undefined) return
+      load(loadSource(entry))
+      if (typeof window !== 'undefined') {
+        const query = entry.key === DEFAULT_SCENARIO.key ? '' : `?scenario=${encodeURIComponent(entry.key)}`
+        window.history.replaceState(null, '', `${window.location.pathname}${query}${window.location.hash}`)
+      }
+    },
+    openScenarioFile(file: string, text: string): void {
+      load(loadSource({ key: null, file, text }))
+    },
+    chooseDefense(id: string): void {
+      setDefenseChoice(id)
+    },
+    applyDefense(id: string): void {
+      const base = baseCompiled()
+      const option = source().defenses.find((entry) => entry.id === id)
+      const original = ensureBaseRun()
+      if (base === null || option === undefined || original === null) return
+      const result = runDefense(base, original, option)
+      if (!result.ok) {
+        setDefenseError(result.diagnostics.map((d) => d.message).join(' '))
+        return
+      }
+      setDefenseError(null)
+      setDefenseChoice(id)
+      setDefense(result.value)
+      begin(result.value.run)
+    },
+    removeDefense(): void {
+      setDefense(null)
+      setDefenseError(null)
+      const original = ensureBaseRun()
+      if (original !== null) begin(original)
+    },
     setMode(next: Mode): void {
       setModeSignal(next)
       setLogOpen(next === 'command')

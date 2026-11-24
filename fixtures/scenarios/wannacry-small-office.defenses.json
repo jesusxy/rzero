@@ -1,0 +1,48 @@
+[
+  {
+    "id": "block-office-servers-smb",
+    "label": "Block SMB from Office to Servers",
+    "description": "Segmentation · firewall rule",
+    "kind": "segmentation",
+    "interventions": [
+      {
+        "type": "set_boundary_access",
+        "id": "deny-office-servers-smb",
+        "from_segment_id": "office",
+        "to_segment_id": "servers",
+        "service_id": "smb",
+        "access": "deny"
+      }
+    ]
+  },
+  {
+    "id": "patch-fs01",
+    "label": "Patch FS-01",
+    "description": "Install MS17-010",
+    "kind": "patch",
+    "interventions": [
+      {
+        "type": "set_vulnerability_status",
+        "id": "patch-fs01-ms17-010",
+        "asset_id": "fs01",
+        "vulnerability_id": "MS17-010",
+        "status": "absent"
+      }
+    ]
+  },
+  {
+    "id": "patch-ws02",
+    "label": "Patch WS-02",
+    "description": "Install MS17-010",
+    "kind": "patch",
+    "interventions": [
+      {
+        "type": "set_vulnerability_status",
+        "id": "patch-ws02-ms17-010",
+        "asset_id": "ws02",
+        "vulnerability_id": "MS17-010",
+        "status": "absent"
+      }
+    ]
+  }
+]

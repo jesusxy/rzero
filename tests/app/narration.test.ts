@@ -11,7 +11,7 @@ import {
 } from '../../src/core'
 import { blockTag, checkName, describeProfile, narrate, type Narration } from '../../src/app/narration'
 import { fill, reasonTemplate } from '../../src/app/narration/narrate'
-import { REASONS, REASON_VARIANTS, SERVICE_NAMES, STEP_TEXT } from '../../src/app/narration/templates'
+import { DEFENSE_TEXT, REASONS, REASON_VARIANTS, SERVICE_NAMES, STEP_TEXT } from '../../src/app/narration/templates'
 import { expectCompiled, fixtureText } from '../core/helpers'
 import { compileLab, type LabSpec } from '../core/engine-helpers'
 import {
@@ -526,10 +526,13 @@ describe('wording rules', () => {
       is: 'is',
       chip: 'SMB exploit',
       traffic: 'SMB traffic',
+      defense: 'Patch FS-01',
     }
     const strings = (value: unknown): string[] =>
       typeof value === 'string' ? [value] : Object.values(value as Record<string, unknown>).flatMap(strings)
     for (const text of strings(STEP_TEXT)) expect(fill(text, supplied)).not.toMatch(LEFTOVER)
+    const comparison = { ...supplied, critical: ', a critical host,', reason: 'not vulnerable', option: 'Patch WS-02', before: '3', after: '2', host: 'FS-01' }
+    for (const text of strings(DEFENSE_TEXT)) expect(fill(text, comparison)).not.toMatch(LEFTOVER)
   })
 })
 

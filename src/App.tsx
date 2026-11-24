@@ -15,7 +15,7 @@ function App() {
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return
       const target = event.target as HTMLElement | null
-      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="listbox"]')) return
       if (event.key === ' ') {
         event.preventDefault()
         store.togglePlay()

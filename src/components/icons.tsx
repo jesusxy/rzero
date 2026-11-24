@@ -68,3 +68,20 @@ export const ChevronIcon = (props: { open: boolean }) => (
     <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
   </svg>
 )
+export const DownIcon = () => (
+  <Icon size={16}>
+    <path d="M6 9l6 6 6-6" />
+  </Icon>
+)
+export const LockIcon = (props: { size?: number }) => (
+  <Icon size={props.size ?? 12}>
+    <rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor" stroke="none" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" stroke-width="2.6" />
+  </Icon>
+)
+export const ShieldIcon = (props: { size?: number }) => (
+  <Icon size={props.size ?? 13}>
+    <path d="M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6z" fill="currentColor" stroke="none" />
+    <path d="M9 12l2 2 4-4" stroke="#fff" stroke-width="2.4" />
+  </Icon>
+)

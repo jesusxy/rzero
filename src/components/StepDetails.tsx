@@ -1,7 +1,18 @@
 import { createMemo, createSignal, For, Match, Show, Switch } from 'solid-js'
 import type { AttemptView, Check, SourceKind } from '../core'
 import type { SimulationStore } from '../app/store'
-import { capabilityChip, checkName, mechanismWords, platformName, primaryCheck, serviceName } from '../app/narration'
+import {
+  capabilityChip,
+  checkName,
+  DEFENSE_TEXT,
+  mechanismWords,
+  originalRunNote,
+  platformName,
+  primaryCheck,
+  resultsText,
+  serviceName,
+} from '../app/narration'
+import { decidedByDefense, interventionIds, originalAttempt } from '../app/defenses'
 import { displayName, hostStatus, stepRange, type HostStatus } from '../app/view'
 import { Text } from './Text'
 
@@ -37,6 +48,9 @@ export function StepDetails(props: { store: SimulationStore }) {
           </div>
         </Match>
         <Match when={store.selectedHost()}>{(id) => <HostDetails store={store} id={id()} />}</Match>
+        <Match when={store.atResults() && store.comparison()}>
+          <ResultsView store={store} />
+        </Match>
         <Match when={store.hasRun() && store.stepIndex() >= 0}>
           <StepView store={store} />
         </Match>
@@ -53,7 +67,7 @@ function Intro(props: { store: SimulationStore }) {
   return (
     <div class="details">
       <p class="step-kicker">{props.store.hasRun() ? 'Starting' : 'Ready'}</p>
-      <h2 class="details-title">{props.store.scenario.title}</h2>
+      <h2 class="details-title">{props.store.scenario().title}</h2>
       <p class="narration">
         The network and the malware profile are loaded. Press Play to run the engine, then follow each attempt as it
         happens: which host it targets, what it needs, and why it succeeds or stops.
@@ -95,6 +109,27 @@ function StepView(props: { store: SimulationStore }) {
     if (parts === undefined) return narration().body
     return complete() ? [parts.lead, ...parts.result].join(' ') : parts.lead
   }
+  const originalNote = createMemo(() => {
+    const comparison = store.comparison()
+    const a = attempt()
+    const scenario = store.compiled()
+    if (comparison === null || a === undefined || scenario === null || !complete() || a.status === 'pending') return null
+    return originalRunNote(scenario, a, a.status, originalAttempt(comparison.baseRun, a))
+  })
+  const via = (ids: readonly string[]) => {
+    const applied = store.defense()
+    if (command() || applied === null) return ids.join(', ')
+    const own = interventionIds(applied.option)
+    return [...new Set(ids.map((id) => (own.has(id) ? applied.option.label : id)))].join(', ')
+  }
+  const resultWord = (a: AttemptView) => {
+    if (!complete()) return RESULT_WORDS.pending
+    const applied = store.defense()
+    if (a.status === 'blocked' && applied !== null && decidedByDefense(primaryCheck(a.checks), interventionIds(applied.option))) {
+      return 'Blocked by your defense'
+    }
+    return RESULT_WORDS[a.status]
+  }
 
   return (
     <div class="details">
@@ -110,6 +145,17 @@ function StepView(props: { store: SimulationStore }) {
       <p class="narration">
         <Text value={body()} />
       </p>
+
+      <Show when={originalNote()}>
+        {(note) => (
+          <div class="original-box">
+            <p class="original-kicker">{DEFENSE_TEXT.original.kicker}</p>
+            <p class="original-text">
+              <Text value={note()} />
+            </p>
+          </div>
+        )}
+      </Show>
 
       <Show when={complete() && narration().parts?.note}>
         <p class="note">
@@ -127,7 +173,7 @@ function StepView(props: { store: SimulationStore }) {
             </p>
             <p class="why-code">
               {stop().check.code} · expected {stop().check.expected} · observed {stop().check.observed}
-              {stop().check.intervention_ids?.length ? ` · via ${stop().check.intervention_ids!.join(', ')}` : ''}
+              {stop().check.intervention_ids?.length ? ` · via ${via(stop().check.intervention_ids!)}` : ''}
             </p>
           </div>
         )}
@@ -165,7 +211,7 @@ function StepView(props: { store: SimulationStore }) {
                 </Show>
               </dd>
               <dt>Result</dt>
-              <dd class={`result result-${complete() ? a().status : 'pending'}`}>{RESULT_WORDS[complete() ? a().status : 'pending']}</dd>
+              <dd class={`result result-${complete() ? a().status : 'pending'}`}>{resultWord(a())}</dd>
               <Show when={command()}>
                 <dt>Link</dt>
                 <dd class="raw">{a().link_id}</dd>
@@ -191,6 +237,59 @@ function StepView(props: { store: SimulationStore }) {
       </div>
       <KeyHint />
     </div>
+  )
+}
+
+function ResultsView(props: { store: SimulationStore }) {
+  const store = props.store
+  const text = createMemo(() => {
+    const comparison = store.comparison()
+    return comparison === null ? null : resultsText(comparison.result, comparison.changes, comparison.alternative)
+  })
+  return (
+    <Show when={text()}>
+      {(t) => (
+        <div class="details">
+          <p class="step-kicker">
+            Step {store.stepIndex() + 1} of {store.steps().length} · {DEFENSE_TEXT.results.step}
+          </p>
+          <h2 class="details-title">
+            <Text value={t().title} />
+          </h2>
+          <p class="narration">
+            <Text value={t().body} />
+          </p>
+          <dl class="changes">
+            <For each={t().rows}>
+              {(row) => (
+                <>
+                  <dt class={`change-${row.key}`}>{row.label}</dt>
+                  <dd>
+                    <Text value={row.value} />
+                  </dd>
+                </>
+              )}
+            </For>
+          </dl>
+          <Show when={t().suggestion}>
+            {(suggestion) => (
+              <p class="note">
+                <Text value={suggestion()} />
+              </p>
+            )}
+          </Show>
+          <div class="details-actions pair">
+            <button type="button" class="primary wide" onClick={() => store.restart()}>
+              Replay
+            </button>
+            <button type="button" class="secondary wide" onClick={() => store.removeDefense()}>
+              Remove defense
+            </button>
+          </div>
+          <KeyHint />
+        </div>
+      )}
+    </Show>
   )
 }
 

@@ -200,6 +200,10 @@ export const STEP_TEXT = {
   blocked: {
     title: 'Blocked at {target}',
     intervention: 'It is blocked by {intervention}, a change this scenario makes.',
+    /** When the deciding fact comes from a defense the user applied. Token {defense}: its label(s). */
+    titleDefense: 'Blocked by your defense at {target}',
+    defense: 'Blocked by your defense: {defense}.',
+    subtitleDefense: 'Stopped by your defense',
     // What can still try the target, from the static network. Only links whose
     // service some profile capability uses count.
     /** Later capabilities on this same link will still be tried. */
@@ -219,6 +223,7 @@ export const STEP_TEXT = {
   indeterminate: {
     title: 'Inconclusive at {target}',
     intervention: 'That gap comes from {intervention}, a change this scenario makes.',
+    defense: 'That gap comes from your defense: {defense}.',
     consequence:
       "The model doesn't guess: {target} is not counted as compromised, and not as safe either.",
   },
@@ -303,4 +308,38 @@ export const PROFILE_TEXT = {
   executionClause: 'over {service} using valid {privilege} credentials on {platforms} machines',
   /** Token {clauses}: the capability clauses joined with "or". */
   summary: 'Spreads host to host {clauses}. Needs an allowed network path and {services} turned on.',
+} as const
+
+/** Wording for a run with a defense applied, compared with the original run. */
+export const DEFENSE_TEXT = {
+  /** The box on a step whose attempt ended differently in the original run. */
+  original: {
+    kicker: 'In the original run',
+    succeeded: 'This is where {target}{critical} was compromised. Your defense changed this step.',
+    blocked: 'In the original run this attempt was blocked ({reason}). Your defense changed this step.',
+    indeterminate: "In the original run we couldn't tell whether this attempt would work. Your defense changed this step.",
+    never: 'In the original run {source} never tried {target}. Your defense changed this step.',
+    critical: ', a critical host,',
+  },
+  results: {
+    step: 'Results',
+    stepSubtitle: 'Compared with the original run',
+    titleSaved: 'Your defense saved {hosts}',
+    titleNone: "Your defense didn't save any host",
+    compared: 'Compared with the original run, {after} of {total} hosts {are} compromised instead of {before}',
+    comparedSame: 'Compared with the original run, the same {after} of {total} hosts {are} compromised',
+    criticalNone: ', and no critical host is reached.',
+    criticalSome: ', and {hosts} {are} still reached.',
+    plain: '.',
+    saved: 'Saved',
+    newlyLost: 'Newly lost',
+    stopped: 'Stopped by your defense',
+    stillLost: 'Still lost',
+    unchanged: 'Unchanged',
+    none: 'None',
+    criticalMark: '{host} (critical)',
+    unknown: 'unknown',
+    suggestion: '{option} would save {hosts}. Try it from the defense card.',
+    suggestionNone: 'Try another option from the defense card.',
+  },
 } as const

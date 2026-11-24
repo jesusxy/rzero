@@ -63,8 +63,16 @@ export function fill(template: string, vars: Vars): string {
   return template.replace(/\{(\w+)\}/g, (token, name: string) => vars[name] ?? token)
 }
 
-export function narrate(step: Step, events: readonly SimulationEvent[], scenario: CompiledScenario): Narration {
-  const context = new NarrationContext(step, events, scenario)
+/** `defenseLabels` maps the intervention IDs of an applied defense to its label. */
+export type NarrateOptions = { readonly defenseLabels?: ReadonlyMap<string, string> }
+
+export function narrate(
+  step: Step,
+  events: readonly SimulationEvent[],
+  scenario: CompiledScenario,
+  options: NarrateOptions = {},
+): Narration {
+  const context = new NarrationContext(step, events, scenario, options.defenseLabels ?? new Map())
   switch (step.kind) {
     case 'seed':
       return context.seed()
@@ -88,8 +96,15 @@ class NarrationContext {
   private readonly scenario: CompiledScenario
   private readonly range: readonly SimulationEvent[]
   private readonly assets: ReadonlyMap<string, Asset>
+  private readonly defenseLabels: ReadonlyMap<string, string>
 
-  constructor(step: Step, events: readonly SimulationEvent[], scenario: CompiledScenario) {
+  constructor(
+    step: Step,
+    events: readonly SimulationEvent[],
+    scenario: CompiledScenario,
+    defenseLabels: ReadonlyMap<string, string>,
+  ) {
+    this.defenseLabels = defenseLabels
     this.step = step
     this.events = events
     this.scenario = scenario
@@ -154,11 +169,13 @@ class NarrationContext {
     const blocked = resolved.outcome === 'blocked'
     const text = blocked ? STEP_TEXT.blocked : STEP_TEXT.indeterminate
     const deciding = primaryCheck(resolved.checks)
+    const defense = this.defensePhrase(deciding?.intervention_ids ?? [])
     let stop: NarrationParts['stop']
     if (deciding !== undefined) {
       const sentences = [fill(reasonTemplate(deciding).because, { ...vars, ...checkVars(deciding) })]
       const intervention = this.interventionPhrase(deciding.intervention_ids ?? [])
-      if (intervention !== undefined) sentences.push(fill(text.intervention, { intervention }))
+      if (defense !== undefined) sentences.push(fill(text.defense, { defense }))
+      else if (intervention !== undefined) sentences.push(fill(text.intervention, { intervention }))
       const others = resolved.checks.filter((check) => check !== deciding && check.status !== 'pass')
       if (others.length > 0) {
         const issues = joinList(others.map((check) => fill(reasonTemplate(check).also, { ...vars, ...checkVars(check) })))
@@ -177,8 +194,10 @@ class NarrationContext {
     } else {
       note = this.whatElseCanTry(attempted, vars).join(' ')
     }
-    const subtitle = deciding === undefined ? undefined : checkName(deciding)
-    return withParts(fill(text.title, vars), preview, { lead, result: [], ...(stop ? { stop } : {}), note }, why, subtitle)
+    const byDefense = blocked && defense !== undefined
+    const subtitle = byDefense ? STEP_TEXT.blocked.subtitleDefense : deciding === undefined ? undefined : checkName(deciding)
+    const title = fill(byDefense ? STEP_TEXT.blocked.titleDefense : text.title, vars)
+    return withParts(title, preview, { lead, result: [], ...(stop ? { stop } : {}), note }, why, subtitle)
   }
 
   summary(): Narration {
@@ -362,6 +381,12 @@ class NarrationContext {
         ? [fill(STEP_TEXT.skipped, { source: this.label(event.source_id), target: this.label(event.target_id) })]
         : [],
     )
+  }
+
+  /** The applied defense's label(s), when every intervention behind the deciding fact belongs to it. */
+  private defensePhrase(ids: readonly string[]): string | undefined {
+    if (ids.length === 0 || !ids.every((id) => this.defenseLabels.has(id))) return undefined
+    return joinList([...new Set(ids.map((id) => this.defenseLabels.get(id)!))])
   }
 
   /** "the segmentation rule deny-ws-srv-smb", for each intervention that wrote the deciding fact. */

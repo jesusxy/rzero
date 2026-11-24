@@ -4,7 +4,7 @@
 
 **Layout target:** `references/rzero-layout-mockup.png` is the target layout for Story Mode. Match its structure: a header with brand, scenario, Story/Command toggle, a step counter with a segmented progress bar and Restart/Back/Play/Next; a left panel with the malware profile card, the step list and hosts grouped by segment; a center column with metric cards, the isometric map, a legend strip and a collapsed event log; and a right panel with step details. Its light palette (ink `#1F2328`, page `#EEF0F3`, map `#F4F5F7`, compromised `#B3341F`, blocked `#9A5B00`, current `#1D5FD1`) and IBM Plex Mono/Sans typography are the initial theme.
 
-**Map target:** `references/rzero-office-step.png` (the WannaCry office mid-replay, a route stopped by a segmentation rule) and `references/rzero-office-results.png` (the same run at its results step) set the map's layout, routes and host labels, and the short "How {malware} does this" section of the step panel. Other parts of those screens (the defense card, the scenario switcher, the comparison metrics) are not built yet.
+**Scenario picker and defense targets:** `references/rzero-picker.png` (the header's scenario picker, open), `references/rzero-defense-step.png` (the WannaCry office mid-replay with a defense applied, a route stopped by it) and `references/rzero-defense-results.png` (the same run at its results step). Together they set the scenario picker, the "Try a defense" card, the map's layout, routes, host labels and defense decorations, the "In the original run" box, the before → after metric cards and the results step.
 
 **Style reference:** `references/protocol-explorer.png`, a step-by-step protocol walkthrough (numbered step list, "Step N of M" details panel, packet table under the diagram). Its pacing and step/detail structure, monospaced typography and restrained borders inform Story Mode; its dark palette does not. Keep palette values in tokens so another theme can be added without changing semantics. The image of the social post provides context for the concept; it is not an additional interface to reproduce.
 
@@ -44,6 +44,20 @@ Persistent asset state is `modeled`, `discovered` or `compromised`. The seed is 
 An attempt has `pending`, `succeeded`, `blocked` or `indeterminate` replay state. Routes are solid lines only, one meaning per style: not tried is thin light grey (`#CDD2D9`); tried and stopped is grey (`#8F98A4`) up to a short amber (`#9A5B00`) tick where it stopped (at the target district's edge for a network block, else at the turn into the target), then thin light grey; outcome unknown is grey with a small purple "?" badge near the target; spread is a heavier red (`#B3341F`); the current step is blue (`#1D5FD1`) with the capability chip travelling along it. Only one route is ever blue; when its step ends it takes its outcome style. The host status word backs up every colour, so colour is never the only signal. A target with one blocked route may later turn compromised through another route.
 
 Static absence of a route means no modeled link; do not draw an animated rejection across missing links.
+
+### Scenario picker
+
+The scenario name in the header is a listbox: each bundled scenario with its name and one line of facts (real malware or synthetic demo, host count, segment count). Command Mode adds "Open a scenario file…", which imports JSON or YAML through the same validation as the CLI; a file that fails shows its diagnostics. The app opens on the WannaCry small office. `?scenario=<key>` remains as a deep link, not as the way to choose.
+
+### Try a defense
+
+A scenario can have a companion `<scenario>.defenses.json`: an array of `{ id, label, description, kind, interventions }`, where `kind` is `segmentation`, `patch` or `link` and `interventions` are the standard objects from `docs/scenario-model.md`. The scenario contract does not change; tests check that every option compiles with its scenario and changes something.
+
+The left panel keeps its order (malware card, steps) and adds a "Try a defense" card: a radio list of options (label and one muted line), "Apply and compare", and a hint about editing the map (not active yet). Applying compiles the scenario with the option's interventions, runs it, and restarts the replay; the card then shows the option as Applied with Remove, and the steps heading reads "Steps · with your defense". Remove restores the original run. There is no original/defended toggle; the comparison is told through the steps.
+
+On the map the defense decorates only what it changes: a segmentation defense gives the protected district a solid amber outline, a light amber fill and an amber label with a lock, and blocked routes stop with their tick at that district's edge; a patch puts a shield on the host; a link defense puts a lock at the link's midpoint. The legend adds the matching entry and "saved by your defense" only while a defense is applied. No rule text appears on the map. On the results step, hosts the defense saved read SAVED in green.
+
+The comparison uses `diffAnalyses` on the original and defended runs. A step whose attempt (same source, target and capability) ended differently in the original run gets an "In the original run" box. A check that fails because of the defense names it by its label ("Blocked by your defense: …"), never by intervention ID. The results step shows before → after metric cards (compromised, critical reached, unknown, blast radius with its percentage-point change) and a "what changed" list (Saved, Stopped by your defense, Still lost, Unchanged), a suggestion naming another option and what it would save, and Replay / Remove defense.
 
 The step panel's evidence section reads "How {profile name} does this": the profile's optional `summary`, then a "Sources (N)" link that expands to the supporting source titles and links. Without a summary it shows the expandable sources only. Command Mode keeps the full claim summaries.
 

@@ -1,6 +1,6 @@
 import { createMemo, For, Show } from 'solid-js'
 import type { SimulationStore } from '../app/store'
-import { describeProfile, platformName } from '../app/narration'
+import { DEFENSE_TEXT, describeProfile, platformName } from '../app/narration'
 import { hostStatus, stepRange, type HostStatus } from '../app/view'
 import { CheckIcon } from './icons'
 import { Text } from './Text'
@@ -52,7 +52,12 @@ export function LeftPanel(props: { store: SimulationStore }) {
       </section>
 
       <section class="panel-section">
-        <h2 class="eyebrow">Steps</h2>
+        <h2 class="eyebrow">
+          Steps
+          <Show when={store.defense()}>
+            <span class="eyebrow-extra"> · with your defense</span>
+          </Show>
+        </h2>
         <Show
           when={store.hasRun()}
           fallback={<p class="hint">Press Play to run the scenario. Each step appears here as the replay reaches it.</p>}
@@ -60,7 +65,11 @@ export function LeftPanel(props: { store: SimulationStore }) {
           <ol class="step-list">
             <For each={store.steps()}>
               {(step, i) => {
-                const narration = () => store.narrations()[i()]
+                const results = () => store.defense() !== null && step.kind === 'summary'
+                const narration = () =>
+                  results()
+                    ? { title: DEFENSE_TEXT.results.step, preview: DEFENSE_TEXT.results.step, subtitle: DEFENSE_TEXT.results.stepSubtitle }
+                    : store.narrations()[i()]
                 return (
                   <li>
                     <button
@@ -95,6 +104,12 @@ export function LeftPanel(props: { store: SimulationStore }) {
           </ol>
         </Show>
       </section>
+
+      <Show when={store.scenario().defenses.length > 0}>
+        <section class="panel-section">
+          <DefenseCard store={store} />
+        </section>
+      </Show>
 
       <section class="panel-section">
         <h2 class="eyebrow">Hosts</h2>
@@ -148,5 +163,63 @@ export function LeftPanel(props: { store: SimulationStore }) {
         </For>
       </section>
     </aside>
+  )
+}
+
+function DefenseCard(props: { store: SimulationStore }) {
+  const store = props.store
+  const applied = () => store.defense()?.option.id ?? null
+  const choice = () => store.defenseChoice()
+  return (
+    <div class="defense-card" classList={{ applied: applied() !== null }}>
+      <h2 class="eyebrow" classList={{ 'eyebrow-accent': applied() === null }} id="defense-heading">
+        {applied() === null ? 'Try a defense' : 'Defense'}
+      </h2>
+      <p class="defense-intro">Change one thing, replay, and compare with the original run.</p>
+      <div class="defense-options" role="radiogroup" aria-labelledby="defense-heading">
+        <For each={store.scenario().defenses}>
+          {(option) => (
+            <label class="defense-option" classList={{ selected: choice() === option.id }}>
+              <input
+                type="radio"
+                name="defense"
+                value={option.id}
+                checked={choice() === option.id}
+                onChange={() => store.chooseDefense(option.id)}
+              />
+              <span class="defense-text">
+                <span class="defense-label">{option.label}</span>
+                <span class="defense-desc">{option.description}</span>
+              </span>
+            </label>
+          )}
+        </For>
+      </div>
+      <Show
+        when={applied() !== null && applied() === choice()}
+        fallback={
+          <button type="button" class="outline wide" disabled={choice() === null} onClick={() => store.applyDefense(choice()!)}>
+            Apply and compare
+          </button>
+        }
+      >
+        <div class="defense-applied">
+          <span class="applied-badge">Applied</span>
+          <button type="button" class="secondary" onClick={() => store.removeDefense()}>
+            Remove
+          </button>
+        </div>
+      </Show>
+      <Show when={store.defenseError()}>
+        {(message) => (
+          <p class="defense-error" role="alert">
+            {message()}
+          </p>
+        )}
+      </Show>
+      <p class="defense-hint" aria-disabled="true">
+        Or select a host or route on the map to change it.
+      </p>
+    </div>
   )
 }

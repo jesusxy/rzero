@@ -32,13 +32,16 @@ bun run rzero story    fixtures/scenarios/001-five-node-baseline.json   # narrat
 - `src/app/narration/` — plain-English step narration (`narrate`): display
   prose derived from event codes and facts, kept out of the core.
 - `src/components/`, `src/App.tsx`, `src/app/` — Solid UI: Story Mode walkthrough
-  (step list, isometric map, step details, autoplay) and Command Mode. Layout
-  target: `references/rzero-layout-mockup.png`. Open `?scenario=002` for the
-  segmented counterfactual, or `?scenario=wannacry` / `?scenario=wannacry-segmented` for
-  the WannaCry small office.
+  (step list, isometric map, step details, autoplay), a "Try a defense"
+  comparison, and Command Mode. Layout target: `references/rzero-layout-mockup.png`.
+  It opens on the WannaCry small office; pick another scenario from the header
+  (Command Mode can also open a JSON or YAML file). `?scenario=001` or
+  `?scenario=002` deep-links to a bundled scenario.
 - `src/domain/`, `src/data/` — prototype UI mock types and data; illustrative
   only, see `docs/core-integration.md`.
-- `fixtures/scenarios/` — canonical synthetic scenarios (JSON and YAML).
+- `fixtures/scenarios/` — canonical synthetic scenarios (JSON and YAML), the
+  WannaCry small office, and `*.defenses.json` companion files listing each
+  scenario's curated defense options.
 - `docs/` — design contract; start with `docs/architecture.md`.
 
 ## Current direction
